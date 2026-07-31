@@ -1,0 +1,1102 @@
+# -*- coding: utf-8 -*-
+'''
+Created on Wed Jul 17 17:13:00 2024
+Modified on Fri Apr 10 2026:
+
+    - removed duplicated immobile-processing logic and centralised frame-gap interpolation
+    - tightened empty-frame and malformed-line handling
+
+parse behaviour text files and align wheel, lick, reward and imaging events
+
+@author: Dinghao Luo
+@modifiers: Dinghao Luo, Jingyu Cao
+'''
+
+#%% imports
+import numpy as np
+
+
+#%% constants
+of_constant = (2**32-1)/1000  # overflow constant; this can only be hard-coded
+early_late_lick_cutoff = 120  # cm; for lick-selectivity calculation
+
+
+#%% main function
+def process_behavioural_data(
+        txtfile: str,
+        max_distance=220,
+        distance_resolution=0.1,
+        run_onset_initial=3.0,
+        run_onset_sustained=10.0,
+        run_onset_duration=300
+        ) -> dict:
+    '''
+    process a mobile behaviour log into the main trial-aligned behaviour structure.
+
+    parameters:
+    - txtfile: path to the behaviour .txt file
+    - max_distance: maximum distance (in cm) used to align across trials
+    - distance_resolution: bin size (in cm) for distance interpolation
+    - run_onset_initial: initial low threshold for run onset (cm/s)
+    - run_onset_sustained: sustained high threshold for run onset (cm/s)
+    - run_onset_duration: minimum duration (in ms) to confirm sustained running
+
+    returns:
+    - dict: structured behavioural data including speed, licks, rewards, alignment to time and distance,
+            as well as run onsets, trial quality flags, and upsampled locomotion traces
+    '''
+    data = process_txt(txtfile)
+
+    # to fix overflow correction, 20250620 Dinghao
+    start_time = float(data['trial_statements'][0][1])
+    if data['speed_times']:
+        data['speed_times'] = correct_overflow(data['speed_times'], 'speed', start_time)
+    if data['lick_times']:
+        data['lick_times'] = correct_overflow(data['lick_times'], 'lick', start_time)
+    if data['pump_times']:
+        data['pump_times'] = correct_overflow(data['pump_times'], 'pump', start_time)
+    if data['movie_times']:
+        data['movie_times'] = correct_overflow(data['movie_times'], 'movie', start_time)
+    if data['trial_statements']:
+        data['trial_statements'] = correct_overflow(
+            data['trial_statements'], 'trial_statement', start_time
+            )  # equivalent to taskDescr in the MATLAB pipeline
+    if data['new_trial_statements']:
+        data['new_trial_statements'] = correct_overflow(
+            data['new_trial_statements'], 'new_trial_statement', start_time
+            )  # equivalent to trialDescr in the MATLAB pipeline
+    if data['pulse_times']:
+        data['pulse_times'] = correct_overflow(data['pulse_times'], 'pulse', start_time)
+    frame_times = correct_overflow(data['frame_times'], 'frame', start_time)
+
+    # these are inputs to process_locomotion()
+    wheel_tuples = [(t, v) for trial in data['speed_times'] for (t, _, v) in trial]
+    trial_start_times = [float(x[1]) for x in data['trial_statements']]
+    trial_end_times = [float(x[1]) for x in data['new_trial_statements']]
+
+    (
+        run_onsets,
+        upsampled_timestamps_ms,
+        upsampled_distance_cm,
+        smoothed_speed,
+        non_stop_trials,
+        non_fullstop_trials
+    ) = process_locomotion(
+        wheel_tuples,
+        trial_start_times=trial_start_times,
+        trial_end_times=trial_end_times,
+        encoder_to_dist=0.04,  # encoder tick-to-cm constant
+        upsample_rate_hz=1000,  # upsample everything to 1 000 Hz
+        smooth_window_ms=100,  # for smoothing speeds
+        min_speed1=run_onset_sustained,  # follows MATLAB naming conventions for easy debugging
+        min_speed=run_onset_initial,
+        track_length_cm=180.0
+    )
+
+    # for distance accumulation
+    common_distance_base = np.linspace(
+        0, max_distance,
+        int(max_distance / distance_resolution)
+        )
+
+    # now we start constructing aligned data structures
+    speed_times_aligned      = []
+    speed_distances_aligned  = []
+    lick_distances_aligned   = []
+    lick_times_aligned       = []
+    lick_maps                = []
+    lick_selectivities       = []
+    start_cue_times          = []
+    reward_times             = []
+    reward_times_aligned     = []
+    reward_distances_aligned = []
+    full_stops               = []
+    bad_trials               = []
+
+    # iterate through the trials to put together the data structures
+    for trial_idx, onset in enumerate(run_onsets):
+        if np.isnan(onset):
+            speed_times_aligned.append([])  # append empty list if no onset
+            speed_distances_aligned.append([])  # same as above
+            lick_distances_aligned.append([])
+            lick_times_aligned.append([])
+            lick_maps.append([])
+            lick_selectivities.append(np.nan)
+            start_cue_times.append(np.nan)
+            reward_times.append(np.nan)
+            reward_times_aligned.append(np.nan)
+            reward_distances_aligned.append(np.nan)
+            full_stops.append(np.nan)
+            bad_trials.append(np.nan)
+        else:
+            trial_end = (trial_end_times[trial_idx]
+                         if trial_idx < len(trial_end_times)
+                         else upsampled_timestamps_ms[-1])
+
+            # slice into the trial window
+            onset_idx = np.searchsorted(upsampled_timestamps_ms, onset)
+            trial_end_idx = np.searchsorted(upsampled_timestamps_ms, trial_end)
+            aligned_times = upsampled_timestamps_ms[onset_idx:trial_end_idx]
+            aligned_speeds = smoothed_speed[onset_idx:trial_end_idx]
+
+            # append aligned speed-time trace
+            speed_times_aligned.append(list(zip(aligned_times, aligned_speeds)))
+
+            # integrate speed to get distance (in cm), using fixed dt = 0.001 s
+            distances = np.cumsum(aligned_speeds) * 0.001  # cm/s * s = cm
+
+            # trials without speed samples are marked bad
+            if distances.size == 0:
+                speed_times_aligned.append([])
+                speed_distances_aligned.append([])
+                lick_distances_aligned.append([])
+                lick_maps.append([])
+                lick_selectivities.append(np.nan)
+                start_cue_times.append(np.nan)
+                reward_times.append(np.nan)
+                reward_times_aligned.append(np.nan)
+                reward_distances_aligned.append(np.nan)
+                full_stops.append(False)
+                bad_trials.append(True)
+                continue  # skip to next trial
+            else:
+                distances -= distances[0]  # shift to start from 0
+
+            # interpolate onto distance base
+            valid_base = common_distance_base[common_distance_base <= distances[-1]]
+            interp_speeds = np.interp(valid_base, distances, aligned_speeds)
+            padded_speeds = np.pad(
+                interp_speeds,
+                (0, len(common_distance_base) - len(interp_speeds)),
+                constant_values=0
+            )
+            speed_distances_aligned.append(padded_speeds)
+
+            # extract lick timestamps that occurred after run-onset
+            try:
+                lick_times_raw = [t for t, _ in data['lick_times'][trial_idx]]
+                lick_times_post_onset = [t for t in lick_times_raw if t >= onset]
+                lick_times_aligned.append([t-onset for t in lick_times_post_onset])
+
+                # map these lick timestamps to distances within the trial
+                lick_dists = np.interp(
+                    lick_times_post_onset,
+                    aligned_times,  # already absolute
+                    distances,
+                    left=np.nan,
+                    right=np.nan
+                )
+
+                # clean up invalid mappings
+                lick_dists = lick_dists[~np.isnan(lick_dists)]
+                lick_distances_aligned.append(lick_dists)
+
+                # construct lick map over distance base
+                lick_map = np.zeros_like(common_distance_base)
+                lick_bin_indices = np.searchsorted(common_distance_base, lick_dists)
+                valid = lick_bin_indices < len(lick_map)
+                np.add.at(lick_map, lick_bin_indices[valid], 1)  # accumulate licks
+                lick_maps.append(lick_map)
+
+                # compute lick selectivity
+                lick_selectivities.append(lick_index(lick_map))
+
+                # extract start cue times
+                start_cue_times.append(data['movie_times'][trial_idx][0][0])
+
+                # extract reward time and distance
+                reward_time = (data['pump_times'][trial_idx][-1]
+                               if data['pump_times'][trial_idx]
+                               else np.nan)
+                reward_times.append(reward_time)
+                if not np.isnan(reward_time):
+                    reward_times_aligned.append(reward_time-onset)
+                else:
+                    reward_times_aligned.append(np.nan)
+
+                if not np.isnan(reward_time):
+                    reward_dist = np.interp(
+                        reward_time,
+                        aligned_times,
+                        distances,
+                        left=np.nan,
+                        right=np.nan
+                    )
+                    reward_distances_aligned.append(reward_dist)
+                else:
+                    reward_distances_aligned.append(np.nan)
+
+                # full stop detection
+                prev_reward_time = data['pump_times'][trial_idx - 1][-1] if data['pump_times'][trial_idx - 1] else None
+                curr_reward_time = reward_time if reward_time else None
+                if prev_reward_time and curr_reward_time:
+                    mask = (upsampled_timestamps_ms >= prev_reward_time) & (upsampled_timestamps_ms < curr_reward_time)
+                    full_stop = np.any(smoothed_speed[mask] < 10)
+                else:
+                    full_stop = False
+                full_stops.append(full_stop)
+
+                is_bad_lick = np.any(lick_dists <= early_late_lick_cutoff)
+                if not np.isnan(onset) and not np.isnan(reward_time):
+                    mask = (upsampled_timestamps_ms >= onset) & (upsampled_timestamps_ms <= reward_time)
+                    low_speed_duration = np.sum(smoothed_speed[mask] < 10) * 0.001
+                    is_bad_speed = low_speed_duration > 5
+                else:
+                    is_bad_speed = True
+                is_bad_reward = np.isnan(reward_time)
+                bad_trials.append(is_bad_lick or is_bad_speed or is_bad_reward)
+
+            except IndexError:  # the last trial's data are not logged due to incompletion
+                lick_distances_aligned.append(np.nan)
+                lick_times_aligned.append(np.nan)
+                lick_selectivities.append(np.nan)
+                start_cue_times.append(np.nan)
+                reward_times.append(np.nan)
+                reward_times_aligned.append(np.nan)
+                reward_distances_aligned.append(np.nan)
+                full_stops.append(np.nan)
+                bad_trials.append(np.nan)
+
+    return {
+        'speed_times_aligned': speed_times_aligned,
+        'speed_distances_aligned': speed_distances_aligned,
+        'lick_times': data['lick_times'],
+        'lick_times_aligned': lick_times_aligned,
+        'lick_distances_aligned': lick_distances_aligned,
+        'lick_maps': lick_maps,
+        'start_cue_times': start_cue_times,
+        'reward_times': reward_times,
+        'reward_times_aligned': reward_times_aligned,
+        'reward_distances_aligned': reward_distances_aligned,
+        'run_onsets': run_onsets,
+        'lick_selectivities': lick_selectivities,
+        'pulse_descriptions': data['pulse_descriptions'],
+        'pulse_times': data['pulse_times'],
+        'trial_statements': data['trial_statements'],
+        'new_trial_statements': data['new_trial_statements'],
+        'full_stops': full_stops,
+        'bad_trials': bad_trials,
+        'non_stop_trials': non_stop_trials,
+        'non_fullstop_trials': non_fullstop_trials,
+        'frame_times': frame_times,
+        'reward_omissions': data['reward_omissions'],
+        'upsampled_timestamps_ms': upsampled_timestamps_ms,
+        'upsampled_distance_cm': upsampled_distance_cm,
+        'upsampled_speed_cm_s': smoothed_speed
+    }
+
+
+#%% for different types of recording
+def process_behavioural_data_imaging(
+        txtfile: str,
+        max_distance=220,
+        distance_resolution=0.1,
+        run_onset_initial=3.0,
+        run_onset_sustained=10.0,
+        run_onset_duration=300,
+        frame_threshold_ms=50
+        ) -> dict:
+    '''
+    add imaging-frame alignment on top of the main mobile behaviour-processing pipeline.
+
+    parameters:
+    - txtfile: path to the behaviour .txt file
+    - max_distance: maximum distance (in cm) used to align across trials
+    - distance_resolution: bin size (in cm) for distance interpolation
+    - run_onset_initial: initial threshold for run onset (cm/s)
+    - run_onset_sustained: sustained threshold for run onset (cm/s)
+    - run_onset_duration: minimum sustained time for valid run onset (ms)
+    - frame_threshold_ms: max allowed frame interval before interpolation
+
+    returns:
+    - dict: behavioural data with imaging-aligned event frames (onsets, cues, rewards)
+    '''
+    # process behavioural data
+    behavioural_data = process_behavioural_data(txtfile, max_distance, distance_resolution,
+                                                run_onset_initial, run_onset_sustained,
+                                                run_onset_duration)
+
+    # extract frame times
+    frame_times = behavioural_data['frame_times']
+    if not frame_times:
+        raise ValueError('Frame times missing or empty in the txt file.')
+
+    # correct for dropped frames (interpolate)
+    frame_times = interpolate_frame_gaps(frame_times, frame_threshold_ms)
+
+    # compute frame indices for behavioural events
+    run_onset_frames = []
+    for onset in behavioural_data['run_onsets']:
+        if onset < frame_times[0] or onset > frame_times[-1]:
+            run_onset_frames.append(-1)  # out of frame range
+        elif onset != -1:
+            run_onset_frames.append(find_nearest(onset, frame_times))
+        else:
+            run_onset_frames.append(-1)
+
+    pump_frames = []
+    for pump in behavioural_data['reward_times']:
+        if np.isnan(pump) or pump < frame_times[0] or pump > frame_times[-1]:
+            pump_frames.append(-1)  # out of frame range or no reward
+        else:
+            pump_frames.append(find_nearest(pump, frame_times))
+
+    cue_frames = []
+    for cue in behavioural_data['start_cue_times']:
+        if np.isnan(cue) or cue < frame_times[0] or cue > frame_times[-1]:
+            cue_frames.append(-1)  # out of frame range or no cue
+        else:
+            cue_frames.append(find_nearest(cue, frame_times))
+
+    # add imaging data to output
+    behavioural_data.update({
+        'run_onset_frames': run_onset_frames,
+        'reward_frames': pump_frames,
+        'start_cue_frames': cue_frames
+    })
+
+    return behavioural_data
+
+def process_behavioural_data_immobile(txtfile: str) -> dict:
+    '''
+    process an immobile behaviour log without locomotion-derived run-onset logic.
+    added by Jingyu Cao, 17 April 2025
+
+    parameters:
+    - txtfile: path to the behaviour .txt file
+
+    returns:
+    - dict: lick, reward, cue, trial metadata and frame times for each trial
+
+    '''
+    # load and parse the txt file
+    data = process_txt_immobile(txtfile)  # uses user's custom `process_txt` function
+
+    # correct for overflow in the data
+    start_time = float(data['trial_statements'][0][1])
+    data['lick_times'] = correct_overflow(data['lick_times'], 'lick', start_time)
+    data['pump_times'] = correct_overflow(data['pump_times'], 'pump', start_time)
+    data['movie_times'] = correct_overflow(data['movie_times'], 'movie', start_time)
+    data['trial_statements'] = correct_overflow(data['trial_statements'], 'trial_statement', start_time)
+    if data['frame_times']:
+        frame_times = correct_overflow(data['frame_times'], 'frame', start_time)
+    else:
+        frame_times = []
+
+    # initialise lists for storing data across trials
+    lick_times = []
+    start_cue_times, reward_times = [], []
+    trial_statements = []
+
+    # process each trial
+    for trial_idx, (lick_trial, movie_trial, reward_trial) in enumerate(
+        zip(data['lick_times'], data['movie_times'], data['pump_times'])
+    ):
+        # process lick data
+        lick_times_trial = [event[0] for event in lick_trial]
+        lick_times.append(lick_times_trial)
+
+        # process reward data
+        reward_times.append(reward_trial)
+
+        # extract start cue times
+        start_cue_times.append([m[0] for m in movie_trial if m[1] == 2])
+
+        # trial statement times and optogenetic protocol
+        trial_statement = data['trial_statements'][trial_idx]
+        trial_statements.append(trial_statement)
+
+    # structure the result
+    return {
+        'lick_times': lick_times,
+        'start_cue_times': start_cue_times,
+        'reward_times': reward_times,
+        'trial_statements': trial_statements,
+        'frame_times': frame_times,  # this was actually added just to prevent np.array(... type='object) from automatically producing a 2D array, 6 Dec 2024
+    }
+
+def process_behavioural_data_immobile_imaging(txtfile, frame_threshold_ms=50):
+    '''
+    add imaging-frame alignment on top of the immobile behaviour-processing pipeline.
+    added by Jingyu Cao, 17 April 2025
+
+    parameters:
+    - txtfile: path to the behaviour .txt file
+    - frame_threshold_ms: max allowed interval between frames before interpolation
+
+    returns:
+    - dict: behavioural data including reward and cue frame indices
+
+    '''
+    # process behavioural data
+    behavioural_data = process_behavioural_data_immobile(txtfile)
+
+    # extract frame times
+    frame_times = behavioural_data['frame_times']
+    if not frame_times:
+        raise ValueError('Frame times missing or empty in the txt file.')
+
+    # correct for dropped frames (interpolate)
+    frame_times = interpolate_frame_gaps(frame_times, frame_threshold_ms)
+
+    # compute frame indices for behavioural events
+
+    pump_frames = []
+    for pump in behavioural_data['reward_times']:
+        if not pump or pump[0] < frame_times[0] or pump[0] > frame_times[-1]:
+            pump_frames.append(-1)  # out of frame range or no reward
+        else:
+            pump_frames.append(find_nearest(pump[0], frame_times))
+
+    cue_frames = []
+    for cue in behavioural_data['start_cue_times']:
+        if not cue or cue[0] < frame_times[0] or cue[0] > frame_times[-1]:
+            cue_frames.append(-1)  # out of frame range or no cue
+        else:
+            cue_frames.append(find_nearest(cue[0], frame_times))
+
+    # add imaging data to output
+    behavioural_data.update({
+        'reward_frames': pump_frames,
+        'start_cue_frames': cue_frames
+    })
+
+    return behavioural_data
+
+
+#%% behaviour calculations and text parsing
+def interpolate_frame_gaps(frame_times, frame_threshold_ms):
+    '''
+    fill dropped imaging frames by midpoint interpolation when adjacent frames are too far apart.
+    '''
+    frame_times = list(frame_times)
+    idx = 0
+    while idx < len(frame_times) - 1:
+        if frame_times[idx + 1] - frame_times[idx] > frame_threshold_ms:
+            interp_fm = (frame_times[idx + 1] + frame_times[idx]) / 2
+            frame_times.insert(idx + 1, interp_fm)
+        else:
+            idx += 1
+    return frame_times
+
+def find_nearest(value, arr):
+    '''
+    find the index of the nearest value in a list.
+
+    parameters:
+    - value: the value to match.
+    - arr: list of float values to search from.
+
+    returns:
+    - int: index of the nearest value in arr.
+    '''
+    nearest_value = min(arr, key=lambda x: abs(x-value))
+    nearest_value_index = arr.index(nearest_value)
+    return nearest_value_index
+
+def lick_index(lick_map):
+    '''
+    compute post-vs-pre lick selectivity from a lick map.
+
+    parameters:
+    - lick_map: 1d array indicating presence of licks at each distance bin->2200 bins
+
+    returns:
+    - float: selectivity index (nan if no licks present).
+    '''
+    midpoint = len(lick_map) // 2
+    sum_pre = np.sum(lick_map[:midpoint])
+    sum_post = np.sum(lick_map[midpoint:])
+    denom = sum_pre + sum_post
+    if denom == 0:
+        return np.nan
+    return sum_post / denom
+
+def process_txt(txtfile):
+    '''
+    parse the main mobile behaviour text format used for locomotion sessions.
+
+    parameters:
+    - txtfile: path to the behavioural .txt file.
+
+    returns:
+    - dict: contains per-trial structured data for speed, licks, reward, cues, frames, and trial metadata.
+
+    note:
+    - reward-omission labels on $NT lines were added with Jingyu Cao on 2024-08-14
+    '''
+    curr_logfile = {}
+    file = open(txtfile, 'r')
+
+    pulse_command_list = []
+
+    line = ['']
+    while line[0] != '$TR':
+        if line[0] == '$PP':  # sometimes this is before the first trial
+            pulse_command_list.append(line)
+        line = get_next_line(file)
+
+    lick_times = []
+    pump_times = []
+    movie_times = []
+    speed_times = []
+    # motor_times = []
+    pulse_times = []
+    frame_times = []
+
+    # mt_trial = []
+    wt_trial = []
+    lt_trial = []
+    pt_trial = []
+    mv_trial = []
+    current_pulse_command = []
+
+    trial_statements = []  # start of trial
+    new_trial_statements = []  # end of trial
+    reward_omissions = []
+
+    while line[0].find('$') == 0:
+        if line[0] == '$TR':
+            trial_statements.append(line)
+        if line[0] == '$MV':
+            mv_trial.append([float(line[1]), float(line[2])])
+        if line[0] == '$WE':
+            # the older parser treated this field as speed directly, but it is click count
+            wt_trial.append(
+                [float(line[1]),
+                 float(line[2])*.04*50,  # the number of clicks per 20 ms, and each click corresponds to .04 cm, Dinghao, 20240625
+                 float(line[3])]  # distance accumulation
+                )
+        if line[0] == '$LE' and line[3] == '1':
+            lt_trial.append([float(line[1]), float(line[2])])
+        if line[0] == '$PE' and line[3] == '1':
+            pt_trial.append(float(line[1]))
+        if line[0] == '$PC':
+            pulse_times.append(float(line[1]))
+        if line[0] == '$PP':
+            current_pulse_command = line
+        if line[0] == '$NT':
+            new_trial_statements.append(line)
+
+            lick_times.append(lt_trial)
+            movie_times.append(mv_trial)
+            pump_times.append(pt_trial)
+            speed_times.append(wt_trial)
+            pulse_command_list.append(current_pulse_command)
+            if len(line) == 5:  # $NT lines may include a reward-omission label
+                reward_omissions.append(line[-1])
+            lt_trial = []
+            mv_trial = []
+            pt_trial = []
+            wt_trial = []
+        if line[0] == '$FM' and line[2] == '0':
+            frame_times.append(float(line[1]))
+        line = get_next_line(file)
+
+    curr_logfile['speed_times'] = speed_times
+    curr_logfile['movie_times'] = movie_times
+    curr_logfile['lick_times'] = lick_times
+    curr_logfile['pump_times'] = pump_times
+    curr_logfile['pulse_times'] = pulse_times
+    curr_logfile['frame_times'] = frame_times
+    curr_logfile['trial_statements'] = trial_statements
+    curr_logfile['new_trial_statements'] = new_trial_statements
+    curr_logfile['pulse_descriptions'] = pulse_command_list
+    curr_logfile['reward_omissions'] = reward_omissions
+    return curr_logfile
+
+def process_txt_immobile(txtfile):
+    '''
+    parse the immobile-session behaviour text format before higher-level post-processing.
+    added by Jingyu Cao, 17 April 2025
+
+    parameters:
+    - txtfile: path to the immobile session behaviour log.
+
+    returns:
+    - dict: trial-wise data including licks, rewards, start cues, and optional frame times.
+
+    '''
+    curr_logfile = {}
+    file = open(txtfile, 'r')
+
+    line = ['']
+    while line[0] != '$TR':
+        line = get_next_line(file)
+
+    lick_times = []
+    pump_times = []
+    movie_times = []
+    frame_times = []
+
+    lt_trial = []
+    pt_trial = []
+    mv_trial = []
+
+    trial_statements = []
+
+    while line[0].find('$') == 0:
+        if line[0] == '$TR':
+            trial_statements.append(line)
+        if line[0] == '$MV':
+            mv_trial.append([float(line[1]), float(line[2])])
+        if line[0] == '$LE' and line[3] == '1':
+            lt_trial.append([float(line[1]), float(line[2])])
+        if line[0] == '$PE' and line[3] == '1':
+            pt_trial.append(float(line[1]))
+        if line[0] == '$NT':
+            lick_times.append(lt_trial)
+            movie_times.append(mv_trial)
+            pump_times.append(pt_trial)
+            lt_trial = []
+            mv_trial = []
+            pt_trial = []
+        if line[0] == '$FM' and line[2] == '0':
+            frame_times.append(float(line[1]))
+        line = get_next_line(file)
+
+    curr_logfile['movie_times'] = movie_times
+    curr_logfile['lick_times'] = lick_times
+    curr_logfile['pump_times'] = pump_times
+    curr_logfile['trial_statements'] = trial_statements
+    curr_logfile['frame_times'] = frame_times
+    return curr_logfile
+
+def get_next_line(file):
+    '''
+    read and return the next non-empty, comma-split line from a file.
+
+    parameters:
+    - file: open file handle.
+
+    returns:
+    - list: line split by commas.
+    '''
+    while True:
+        line = file.readline()
+        if line == '':
+            return ['']
+        line = line.rstrip('\n').split(',')
+        if len(line) != 1 or line[0] != '':
+            return line
+
+def correct_overflow(data, label, start_time=None, preserve_pump_structure=True):
+    '''
+    shared overflow-correction engine for both behaviour and imaging utilities.
+
+    parameters:
+    - data: list of per-trial timestamp events (e.g., speed, lick).
+    - label: type of data ('speed', 'lick', 'movie', etc.).
+    - start_time: reference time for scalar pulse streams when needed.
+    - preserve_pump_structure: if True, keep pump outputs as per-trial lists; if False,
+      return the historical imaging-style scalar pump stream.
+
+    returns:
+    - list: overflow-corrected trial-wise event data.
+    '''
+    tot_trial = len(data)
+    new_data = []
+
+    if label == 'speed':
+        curr_time = data[0][0][0]
+        for t in range(tot_trial):
+            if data[t][-1][0] - curr_time >= 0:
+                new_data.append(data[t])
+                curr_time = data[t][-1][0]
+            else:
+                new_trial = []
+                curr_trial = data[t]
+                curr_length = len(curr_trial)
+                for s in range(curr_length):
+                    if curr_trial[s][0] - curr_time > 0:
+                        new_trial.append(curr_trial[s])
+                    else:
+                        new_trial.append([curr_trial[s][0] + of_constant, curr_trial[s][1], curr_trial[s][2]])
+                new_data.append(new_trial)
+
+    if label == 'lick':  # added by Jingyu Cao, 22 June 2024
+        # the first trial can have no licks, Dinghao, 26 June 2024
+        first_trial_with_licks = next(x for x in data if len(x) != 0)
+        curr_time = first_trial_with_licks[0][0]
+        for t in range(tot_trial):
+            if len(data[t]) == 0:
+                new_data.append([])
+            elif data[t][-1][0] - curr_time >= 0:
+                new_data.append(data[t])
+                curr_time = data[t][-1][0]
+            else:
+                new_trial = []
+                curr_trial = data[t]
+                curr_length = len(curr_trial)
+                for s in range(curr_length):
+                    if curr_trial[s][0] - curr_time > 0:
+                        new_trial.append(curr_trial[s])
+                    else:
+                        new_trial.append([curr_trial[s][0] + of_constant, curr_trial[s][1]])
+                new_data.append(new_trial)
+
+    if label == 'pulse':
+        curr_time = start_time
+        for t in range(len(data)):
+            if data[t] - curr_time >= 0:
+                new_data.append(data[t])
+                curr_time = data[t]
+            else:
+                new_data.append(data[t] + of_constant)
+
+    if label == 'pump':
+        # the first trial can have no pump, Dinghao, 4 July 2024
+        first_trial_with_pump = next(x for x in data if len(x) != 0)
+        curr_time = first_trial_with_pump[0]
+        for t in range(tot_trial):
+            if len(data[t]) == 0:
+                if preserve_pump_structure:
+                    new_data.append([])
+            else:
+                corrected = data[t][0] if data[t][0] - curr_time >= 0 else data[t][0] + of_constant
+                if data[t][0] - curr_time >= 0:
+                    curr_time = data[t][0]
+                if preserve_pump_structure:
+                    new_data.append([corrected])
+                else:
+                    new_data.append(corrected)
+
+    if label == 'movie':
+        curr_time = data[0][0][0]
+        for t in range(tot_trial):
+            if data[t][-1][0] - curr_time >= 0:
+                new_data.append(data[t])
+                curr_time = data[t][-1][0]
+            else:
+                new_trial = []
+                curr_trial = data[t]
+                curr_length = len(curr_trial)
+                for s in range(curr_length):
+                    # movie-timestamp transition, Jingyu Cao, 18 August 2024
+                    if curr_trial[s][0] - curr_time >= 0:
+                        new_trial.append(curr_trial[s])
+                    else:
+                        new_trial.append([curr_trial[s][0] + of_constant, curr_trial[s][1]])
+                new_data.append(new_trial)
+
+    if label == 'frame':
+        if not data:
+            return []
+        curr_time = data[0]
+        for f in data:
+            if f - curr_time >= 0:
+                new_data.append(f)
+                curr_time = f
+            else:
+                new_data.append(f + of_constant)
+
+    if label == 'trial_statement':
+        curr_time = float(data[0][1])
+        for t in range(tot_trial):
+            if float(data[t][1]) - curr_time >= 0:
+                new_data.append(data[t])
+                curr_time = float(data[t][1])
+            else:
+                new_trial = data[t]
+                new_trial[1] = str(float(new_trial[1]) + of_constant)
+                new_data.append(new_trial)
+
+    if label == 'new_trial_statement':
+        curr_time = float(data[0][1])
+        for t in range(tot_trial):
+            if float(data[t][1]) - curr_time >= 0:
+                new_data.append(data[t])
+                curr_time = float(data[t][1])
+            else:
+                new_trial = data[t]
+                new_trial[1] = str(float(new_trial[1]) + of_constant)
+                new_data.append(new_trial)
+
+    return new_data
+
+#%% run-onset detection
+from scipy.ndimage import uniform_filter1d
+
+def process_locomotion(wheel_tuples,
+                       trial_start_times,
+                       trial_end_times,
+                       encoder_to_dist=0.04,
+                       upsample_rate_hz=1000,
+                       smooth_window_ms=100,
+                       sample_freq_hz=1000,
+                       min_speed1=10.0,
+                       min_speed=1.0,
+                       track_length_cm=180.0):
+    '''
+    process raw wheel encoder ticks to produce upsampled distance, smoothed speed,
+    and run-onset timestamps replicating MATLAB logic.
+
+    parameters:
+    -----------
+    wheel_tuples : list of tuples
+        list of (timestamp in ms, tick count) pairs sorted in time.
+    trial_start_times : list
+        list of trial start timestamps (in ms).
+    trial_end_times : list
+        list of trial end timestamps (in ms); may be one shorter than start times.
+    encoder_to_dist : float
+        conversion factor from encoder ticks to cm (default: 0.04).
+    upsample_rate_hz : int
+        output resolution (default: 1000 Hz = 1 ms).
+    smooth_window_ms : int
+        speed smoothing window size (default: 100 ms).
+    sample_freq_hz : int
+        sampling frequency of interpolated data (default: 1000 Hz).
+    min_speed1 : float
+        high-speed threshold for detecting run (default: 10 cm/s).
+    min_speed : float
+        low-speed threshold for identifying stillness (default: 1 cm/s).
+    track_length_cm : float
+        track length for reset detection (default: 180 cm).
+
+    returns:
+    --------
+    run_onset_times : list
+        list of detected run-onset times in ms (first trial is skipped).
+    upsampled_timestamps : np.ndarray
+        array of uniformly sampled timepoints in ms.
+    upsampled_distance_cm : np.ndarray
+        distance trace including resets (in cm).
+    speed_smoothed_cm_s : np.ndarray
+        smoothed speed trace (in cm/s).
+    non_stop_trials: list
+        list indicating trials without a complete stop before the next run onset.
+    non_fullstop_trials: list
+        list indicating trials where only a partial slowdown was found before the next run onset.
+    Jingyu Cao added both stop-quality flags on 30 September 2025.
+    '''
+    n_trials = len(trial_start_times)
+
+    # unpack raw wheel ticks
+    timestamps, ticks = zip(*wheel_tuples)
+    timestamps = np.array(timestamps)
+    ticks = np.array(ticks)
+
+    # keep the trace in chronological order before interpolation
+    order = np.argsort(timestamps, kind='mergesort')
+    timestamps = timestamps[order]
+    ticks = ticks[order]
+
+    # compute cumulative distance with reset
+    raw_distances = []
+    acc = 0
+    for i in range(len(ticks)):
+        if i > 0 and (ticks[i] - ticks[i - 1]) < -10:
+            acc = 0
+        else:
+            acc += ticks[i] - ticks[i - 1] if i > 0 else 0
+        raw_distances.append(acc * encoder_to_dist)
+
+    raw_distances = np.array(raw_distances)
+    raw_distances_reset = raw_distances.copy()
+
+    # make continuous (remove resets)
+    resets = np.where(np.diff(raw_distances) < 0)[0] + 1
+    resets = np.concatenate([resets, [len(raw_distances)]])
+    for i in range(len(resets) - 1):
+        start = resets[i]
+        end = resets[i+1]
+        offset = raw_distances[start - 1]
+        raw_distances[start:end] += offset
+
+    continuous_distance_cm = raw_distances - raw_distances[0]
+
+    # upsample to uniform timestamps
+    start_time = timestamps[0]
+    end_time = timestamps[-1]
+    upsampled_timestamps = np.arange(start_time, end_time + 1, 1000 / upsample_rate_hz)
+    upsampled_distance_cm = np.interp(upsampled_timestamps, timestamps, raw_distances_reset)
+    upsampled_distance_cm_all = np.interp(upsampled_timestamps, timestamps, continuous_distance_cm)
+
+    # compute smoothed speed
+    dt = 1 / upsample_rate_hz
+    speed = np.gradient(upsampled_distance_cm_all, dt)
+    window_samples = int(smooth_window_ms / 1000 * upsample_rate_hz)
+    speed_smoothed = uniform_filter1d(speed, size=window_samples)
+
+    # detect run onsets
+    run_onset_times = [np.nan]  # first trial skipped
+    non_stop_trials = [np.nan]
+    non_fullstop_trials = [np.nan]
+
+    for i in range(1, len(trial_start_times)):
+        t_prev = trial_start_times[i-1]
+        t0     = trial_start_times[i]
+        t1     = trial_end_times[i] if i < len(trial_end_times) else upsampled_timestamps[-1]
+
+        # trial boundaries in the upsampled array
+        idx_prev_start = np.searchsorted(upsampled_timestamps, t_prev)
+        idx_curr_start = np.searchsorted(upsampled_timestamps, t0)
+        idx_curr_end   = np.searchsorted(upsampled_timestamps, t1)
+
+        # reset detection on raw distances (same as before)
+        trace_prev = upsampled_distance_cm[idx_prev_start:idx_curr_start]
+        diffs      = np.diff(trace_prev)
+        resets     = np.where(diffs < -track_length_cm/2)[0]
+
+        if resets.size > 0:
+            last_reset = resets[-1] + 1
+            post       = np.where(trace_prev[last_reset:] > track_length_cm)[0]
+            if post.size:
+                idx_exit = idx_prev_start + last_reset + post[0]
+            else:
+                overall = np.where(trace_prev > track_length_cm)[0]
+                idx_exit = (idx_prev_start + overall[0]) if overall.size else idx_curr_start
+        else:
+            overall = np.where(trace_prev > track_length_cm)[0]
+            idx_exit = (idx_prev_start + overall[0]) if overall.size else idx_curr_start
+
+        idx_start = idx_exit
+        idx_end   = idx_curr_end
+
+        # define segments
+        len_diff   = idx_curr_start - idx_start
+        speed_all  = speed_smoothed[idx_start:idx_end]
+        speed_cur  = speed_smoothed[idx_curr_start:idx_curr_end]
+
+        # compute run/stop lengths for the current-trial speed
+        is_run = speed_cur > min_speed1
+        run_lengths, stop_lengths = [], []
+        cnt = 0
+        for v in is_run:
+            if v:
+                if cnt < 0:
+                    stop_lengths.append(-cnt)
+                    cnt = 1
+                else:
+                    cnt += 1
+            else:
+                if cnt > 0:
+                    run_lengths.append(cnt)
+                    cnt = -1
+                else:
+                    cnt -= 1
+        if cnt > 0:
+            run_lengths.append(cnt)
+        elif cnt < 0:
+            stop_lengths.append(-cnt)
+
+        # first running sample in trial
+        ind_first = np.where(is_run)[0]
+        ind_first = ind_first[0] if ind_first.size else None
+
+        # first continuous-run block >0.3 s
+        ind_conti = next((j for j, r in enumerate(run_lengths) if r > 0.3 * sample_freq_hz), None)
+
+        # compute ind_start (0-based into speed_all)
+        if ind_first is not None and ind_first > 0:
+            if ind_conti is not None and ind_conti > 0:
+                offset = sum(run_lengths[:ind_conti]) + sum(stop_lengths[:ind_conti])
+                ind_start = offset + len_diff
+            else:
+                ind_start = ind_first + len_diff
+        else:
+            if ind_conti is not None and ind_conti > 0:
+                offset = sum(run_lengths[:ind_conti]) + sum(stop_lengths[:ind_conti])
+                ind_start = offset + len_diff
+            else:
+                # no adequate run in trial: find last full stop in pre-trial segment
+                pre_mask = speed_all[:len_diff] > min_speed1
+                zeros    = np.where(~pre_mask)[0]
+                ind_start = zeros[-1] if zeros.size else -2
+
+        # now back-search for the last moment <= min_speed before ind_start
+        if ind_start > 0:
+            segment = speed_all[:ind_start]
+            lows    = np.where(segment <= min_speed)[0]
+            if lows.size:
+                onset_local = lows[-1]
+            else:
+                # there was no full stop, so use the lowest-speed sample
+                onset_local = int(np.argmin(segment))
+                # record this as a partial stop when no full stop is found before run onset, Jingyu Cao, 30 September 2025
+                ind_start = -3
+        else:
+            # no full stop at all: pick min-speed in pre-trial window
+            seg_pre = speed_all[:len_diff]
+            onset_local = int(np.argmin(seg_pre)) if seg_pre.size else np.nan
+
+        true_idx = idx_start + onset_local
+        if np.isnan(true_idx):
+            run_onset_times.append(np.nan)
+        else:
+            run_onset_times.append(upsampled_timestamps[int(true_idx)])
+
+        if ind_start ==-2:
+            non_stop_trials.append(1)
+        else:
+            non_stop_trials.append(0)
+
+        if ind_start ==-3:
+            non_fullstop_trials.append(1)
+        else:
+            non_fullstop_trials.append(0)
+
+    return run_onset_times, upsampled_timestamps, upsampled_distance_cm, speed_smoothed, non_stop_trials, non_fullstop_trials
+
+def detect_run_onsets_teensy(speed_times,
+                             threshold_speed_cm_s=10.0,
+                             threshold_time_bins=4,
+                             dt_check_ms=20.0):
+    '''
+    detect run onset times using teensy-like logic from process_txt output.
+
+    parameters:
+    - speed_times: list of trials; each trial is a list of [time_ms, speed_cm_s, distance_accum]
+    - threshold_speed_cm_s: speed threshold in cm/s (teensy uses 10)
+    - threshold_time_bins: number of *previous* bins above threshold required
+      teensy uses 'threshold_speed_counts > threshold_time' with threshold_time=4
+    - dt_check_ms: nominal encoder check interval (20 ms)
+
+    returns:
+    - run_onsets_ms: 1d array of length n_trials with run onset time per trial in ms (nan if none)
+    '''
+    n_trials = len(speed_times)
+    run_onsets_ms = np.full(n_trials, np.nan, dtype=float)
+
+    for tr in range(n_trials):
+        trial_st = speed_times[tr]
+        if not trial_st:
+            continue
+
+        # NumPy indexing below needs arrays
+        t = np.array([row[0] for row in trial_st], dtype=float)  # ms
+        v = np.array([row[1] for row in trial_st], dtype=float)  # cm/s
+
+        # keep the consecutive-sample test in time order
+        order = np.argsort(t)
+        t = t[order]
+        v = v[order]
+
+        consec = 0
+        prev_t = None
+        onset_t = np.nan
+
+        for ti, vi in zip(t, v):
+            if prev_t is not None:
+                dt = ti - prev_t
+                # if there is a gap bigger than ~1 encoder tick, treat it as a break in continuity
+                if dt > 1.5 * dt_check_ms:
+                    consec = 0
+
+            # teensy logic: counts*2 > 10  <=> speed_cm_s > 10
+            if vi > threshold_speed_cm_s:
+                consec += 1
+            else:
+                consec = 0
+
+            # teensy uses '>' comparison: threshold_speed_counts > threshold_time
+            if consec > threshold_time_bins:
+                onset_t = float(ti)
+                break
+
+            prev_t = ti
+
+        run_onsets_ms[tr] = onset_t
+
+    return run_onsets_ms

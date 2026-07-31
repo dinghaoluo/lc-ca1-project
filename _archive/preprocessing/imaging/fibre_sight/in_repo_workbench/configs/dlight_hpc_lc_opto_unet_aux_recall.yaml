@@ -1,0 +1,48 @@
+# Created on 26 April 2026
+# recall-heavy trial with support targets and Tversky loss
+data:
+  manifest: data/imaging/fibre_sight/manifests/dlight_hpc_lc_opto_manifest.csv
+  train_split: train
+  val_split: val
+  patch_size: 256
+  patches_per_image: 32
+  val_patches_per_image: 8
+  foreground_fraction: 0.85
+  normalise_percentiles: [1, 99.7]
+  cache_images: true
+  target_mode: foreground_support
+  support_radius: 3
+
+model:
+  in_channels: 1
+  out_channels: 2
+  base_channels: 32
+  depth: 4
+
+# This was the recall trial; the support channel and larger false-negative penalty stay auxiliary.
+loss:
+  mode: bce_tversky
+  bce_weight: 0.5
+  seg_weight: 1.0
+  tversky_alpha: 0.15
+  tversky_beta: 0.85
+  channel_weights: [1.0, 0.35]
+  pos_weight: [2.0, 1.0]
+
+train:
+  run_name: dlight_hpc_lc_opto_unet_aux_recall
+  out_dir: data/imaging/fibre_sight/runs
+  epochs: 100
+  batch_size: 8
+  learning_rate: 0.00025
+  weight_decay: 0.00001
+  num_workers: 0
+  pin_memory: true
+  amp: true
+  seed: 13
+  device: auto
+
+postprocess:
+  threshold: 0.5
+  min_size: 30
+  max_size:

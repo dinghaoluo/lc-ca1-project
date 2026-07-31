@@ -1,0 +1,431 @@
+# -*- coding: utf-8 -*-
+'''
+Created on Fri Sep 12 18:07:16 2025
+Modified on 22 Jan 2026
+Modified on 23 Mar 2026
+    - recorded that the adaptive membrane-mask import was added with Jingyu Cao on 2026-03-23
+
+analyse the dispersion of dLight signal after stim.
+    dependent on extraction with hpc_dlight_lc_opto_extract.py
+Modified to work on ROI vs neuropil over bins
+Modified to use union of masks with dLight-expression-thresholded mask to
+    extract traces
+
+@author: Dinghao Luo
+'''
+
+#%% imports
+from pathlib import Path
+import sys
+
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from scipy.stats import sem
+from scipy.optimize import curve_fit
+from scipy.ndimage import binary_dilation
+
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+if str(repo_root / 'utils') not in sys.path:
+    sys.path.insert(0, str(repo_root / 'utils'))
+
+from common_functions import mpl_formatting
+from console_formatting import print_session, print_status
+import imaging_utility_functions as iuf
+import project_paths as pp
+mpl_formatting()
+
+import rec_list
+paths = rec_list.pathdLightLCOpto
+
+
+#%% decay fit
+def _exp_decay_fixed(t, A, tau, t0, B):
+    return A * np.exp(-(t - t0) / tau) + B
+
+
+#%% paths and parameters
+dLight_stem   = pp.HPC_DLIGHT_LC_OPTO_STEM
+all_sess_stem = dLight_stem / 'all_sessions'
+save_stem     = pp.HPC_DLIGHT_LC_OPTO_FIGURES_STEM / 'ROI_vs_neuropil'
+
+# how far away from ROI to count as neuropil
+DISTANCE_FROM_ROI = 9  # 9 pixels ~ 5 um
+
+ALPHA    = 0.05
+MIN_RI   = 0.1
+R2_THRES = 0.7
+N_BINS   = 40
+XAXIS    = np.arange(N_BINS) / 10
+
+# new, thresholding needs to be capped, 24 March 2026
+PIXEL_REDUCTION_THRESH = 0.5   # remove sessions with >50% pixels removed
+
+
+#%% analysis
+all_ROI_RI_bins      = []
+all_ROI_RI2_bins     = []
+all_neuropil_RI_bins = []
+
+all_ROI_RI_taus      = []
+all_ROI_RI2_taus     = []
+all_neuropil_RI_taus = []
+
+# main loop
+for path in paths:
+    recname = Path(path).name
+    print_session(recname)
+
+    proc_data_path     = all_sess_stem / recname / 'processed_data'
+    pixel_RI_path      = all_sess_stem / recname / f'processed_data/{recname}_pixel_RI_bins.npy'
+    pixel_RI_ch2_path  = all_sess_stem / recname / f'processed_data/{recname}_pixel_RI2_bins.npy'
+    pixel_RI_stim_path = all_sess_stem / recname / f'processed_data/{recname}_pixel_RI_stim.npy'
+    roi_path           = all_sess_stem / recname / f'processed_data/{recname}_ROI_dict.npy'
+
+    ref_ch1           = np.load(proc_data_path / 'ref_mat_ch1.npy', allow_pickle=True)
+    pixel_RI_bins     = np.load(pixel_RI_path, allow_pickle=True)
+    pixel_RI_ch2_bins = np.load(pixel_RI_ch2_path, allow_pickle=True)
+    pixel_RI_stim     = np.load(pixel_RI_stim_path, allow_pickle=True)
+    roi_dict          = np.load(roi_path, allow_pickle=True).item()
+
+    # ---- identify releasing ROIs ----
+    releasing = iuf.identify_releasing_rois(pixel_RI_stim, roi_dict, alpha=ALPHA, min_ri=MIN_RI)
+
+    if len(releasing) == 0:
+        print_status('skipped', 'no releasing ROI')
+        continue
+    # ---- identification ends ----
+
+    # new, dLight-expression-thresholded masks first, 23 March 2026
+    thres_mask = iuf.generate_adaptive_membrane_mask(ref_ch1, visualize=0)
+
+    # build mask of releasing ROIs
+    releasing_mask_raw = iuf.build_roi_mask(releasing)
+    releasing_mask = releasing_mask_raw & thres_mask  # new, intersection of releasing_mask and thresholded dLight, 23 Mar 2026
+
+    # build dilated mask and then the anti-mask
+    ROI_mask      = iuf.build_roi_mask(roi_dict)
+    ROI_dilated   = binary_dilation(ROI_mask, iterations=DISTANCE_FROM_ROI)
+    anti_ROI_mask = ~ROI_dilated
+    anti_ROI_mask = anti_ROI_mask & thres_mask  # new, intersection of anti_ROI_mask and thresholded, 23 Mar 2026
+
+    # ------------------
+    # filter sessions based on pixel reduction
+    # ------------------
+    n_raw = np.sum(releasing_mask_raw)
+    n_thres = np.sum(releasing_mask)
+
+    pixel_reduction = 1 - (n_thres / n_raw)
+
+    if pixel_reduction > PIXEL_REDUCTION_THRESH:
+        print_status('skipped', f'pixel_reduction={pixel_reduction:.3f}')
+        continue
+
+    # ------------------
+    # EXTRACT RI TRACES
+    # ------------------
+    # ... from ROI_mask
+    ROI_RI_bins  = np.nanmean(pixel_RI_bins[releasing_mask, :], axis=0)
+    ROI_RI2_bins = np.nanmean(pixel_RI_ch2_bins[releasing_mask, :], axis=0)
+
+    # ... and from anti_ROI_mask
+    neuropil_RI_bins = np.nanmean(pixel_RI_bins[anti_ROI_mask, :], axis=0)
+
+    # append first
+    all_ROI_RI_bins.append(ROI_RI_bins)
+    all_ROI_RI2_bins.append(ROI_RI2_bins)
+    all_neuropil_RI_bins.append(neuropil_RI_bins)
+
+    # now we fit tau
+    first_valid = np.where(np.isfinite(ROI_RI_bins))[0][0]
+
+    t0   = XAXIS[first_valid]
+    B    = ROI_RI_bins[first_valid:].min()
+    B2   = ROI_RI2_bins[first_valid:].min()
+    Bneu = neuropil_RI_bins[first_valid:].min()
+
+    t_fit    = XAXIS[first_valid:]
+    y_fit    = ROI_RI_bins[first_valid:]
+    y2_fit   = ROI_RI2_bins[first_valid:]
+    yneu_fit = neuropil_RI_bins[first_valid:]
+
+    # t0 and baseline are fixed from the trace; only A and tau are fitted
+    # fit ROIs first
+    popt, _ = curve_fit(
+        lambda t, A, tau: _exp_decay_fixed(t, A, tau, t0, B),
+        t_fit,
+        y_fit,
+        p0=[ROI_RI_bins[first_valid] - B, 1.0],
+        bounds=([0, 0], [np.inf, np.inf])
+    )
+    A_fit, tau_fit = popt
+
+    # predict fitted decay
+    y_pred = _exp_decay_fixed(t_fit, A_fit, tau_fit, t0, B)
+
+    # compute R2
+    ss_res = np.sum((y_fit - y_pred)**2)
+    ss_tot = np.sum((y_fit - np.mean(y_fit))**2)
+    if ss_tot == 0:
+        continue
+    R2 = 1 - ss_res / ss_tot
+
+    # require R2 > thres
+    if R2 < R2_THRES:
+        continue
+
+    all_ROI_RI_taus.append(tau_fit)
+
+    # fit ROIs first -- red now
+    popt, _ = curve_fit(
+        lambda t, A, tau: _exp_decay_fixed(t, A, tau, t0, B2),
+        t_fit,
+        y2_fit,
+        p0=[ROI_RI2_bins[first_valid] - B2, 1.0],
+        bounds=([0, 0], [np.inf, np.inf])
+    )
+    A_fit, tau_fit = popt
+
+    # predict fitted decay
+    y_pred = _exp_decay_fixed(t_fit, A_fit, tau_fit, t0, B2)
+
+    # compute R2
+    ss_res = np.sum((y2_fit - y_pred)**2)
+    ss_tot = np.sum((y2_fit - np.mean(y2_fit))**2)
+    if ss_tot == 0:
+        continue
+    R2 = 1 - ss_res / ss_tot
+
+    # require R2 > thres
+    if R2 < R2_THRES:
+        continue
+
+    all_ROI_RI2_taus.append(tau_fit)
+
+    # then do neuropil
+    popt, _ = curve_fit(
+        lambda t, A, tau: _exp_decay_fixed(t, A, tau, t0, Bneu),
+        t_fit,
+        yneu_fit,
+        p0=[neuropil_RI_bins[first_valid] - Bneu, 1.0],
+        bounds=([0, 0], [np.inf, np.inf])
+    )
+    A_fit, tau_fit = popt
+
+    # predict fitted decay
+    y_pred = _exp_decay_fixed(t_fit, A_fit, tau_fit, t0, Bneu)
+
+    # compute R2
+    ss_res = np.sum((yneu_fit - y_pred)**2)
+    ss_tot = np.sum((yneu_fit - np.mean(yneu_fit))**2)
+    if ss_tot == 0:
+        continue
+    R2 = 1 - ss_res / ss_tot
+
+    # require R2 > thres
+    if R2 < R2_THRES:
+        continue
+
+    all_neuropil_RI_taus.append(tau_fit)
+
+    # -----------------------
+    # EXTRACT RI TRACES ENDS
+    # -----------------------
+
+
+#%% tau plot
+ROI_mat      = np.vstack(all_ROI_RI_bins)      # shape: nROI × nTime
+ROI2_mat     = np.vstack(all_ROI_RI2_bins)
+neuropil_mat = np.vstack(all_neuropil_RI_bins)
+
+ROI_mean = np.nanmean(ROI_mat, axis=0)
+ROI_sem  = sem(ROI_mat, axis=0, nan_policy='omit')
+
+ROI2_mean = np.nanmean(ROI2_mat, axis=0)
+ROI2_sem  = sem(ROI2_mat, axis=0, nan_policy='omit')
+
+neuropil_mean = np.nanmean(neuropil_mat, axis=0)
+neuropil_sem  = sem(neuropil_mat, axis=0, nan_policy='omit')
+
+# plotting
+fig, ax = plt.subplots(figsize=(3, 2.4))
+
+ax.plot(XAXIS, ROI_mean, color='darkgreen', label='LC axons')
+ax.fill_between(
+    XAXIS,
+    ROI_mean - ROI_sem,
+    ROI_mean + ROI_sem,
+    color='darkgreen', alpha=.3, linewidth=0, edgecolor='none'
+)
+
+ax.plot(XAXIS, ROI2_mean, color='darkred', label='LC axons (ctrl.)')
+ax.fill_between(
+    XAXIS,
+    ROI2_mean - ROI2_sem,
+    ROI2_mean + ROI2_sem,
+    color='darkred', alpha=.3, linewidth=0, edgecolor='none'
+)
+
+ax.plot(XAXIS, neuropil_mean, color='grey', label='Neuropil')
+ax.fill_between(
+    XAXIS,
+    neuropil_mean - neuropil_sem,
+    neuropil_mean + neuropil_sem,
+    color='grey', alpha=.3, linewidth=0, edgecolor='none'
+)
+
+ax.set(
+    xlabel='Time from stim.-offset (s)',
+    ylabel='RI',
+    title='LC axon dLight'
+)
+ax.legend(frameon=False, fontsize=7)
+
+for s in ['top', 'right']:
+    ax.spines[s].set_visible(False)
+
+fig.tight_layout()
+
+for ext in ['.png', '.pdf']:
+    fig.savefig(
+        save_stem / f'RI_ROI_vs_neuropil{ext}',
+        dpi=300,
+        bbox_inches='tight'
+    )
+
+
+#%% tau histogram
+bins = np.linspace(0, 4, 21)
+
+ROI_taus  = np.array(all_ROI_RI_taus)
+ROI2_taus = np.array(all_ROI_RI2_taus)
+NEU_taus  = np.array(all_neuropil_RI_taus)
+
+fig, ax = plt.subplots(figsize=(3, 2.4))
+
+ax.hist(
+    ROI_taus,
+    bins=bins,
+    color='darkgreen',
+    alpha=0.6,
+    edgecolor='none',
+    label='ROI'
+    )
+
+ax.hist(
+    ROI2_taus,
+    bins=bins,
+    color='darkred',
+    alpha=0.6,
+    edgecolor='none',
+    label='ROI (ctrl.)'
+    )
+
+ax.hist(
+    NEU_taus,
+    bins=bins,
+    color='grey',
+    alpha=0.6,
+    edgecolor='none',
+    label='Neuropil'
+    )
+
+# medians + IQRs
+q1_roi, med_roi, q3_roi = np.percentile(ROI_taus, [25, 50, 75])
+ax.axvline(med_roi, color='darkgreen', linestyle='--', lw=1)
+ax.text(
+    0.02, 0.95,
+    f'ROI median = {med_roi:.2f}s\nIQR = [{q1_roi:.2f}, {q3_roi:.2f}]',
+    transform=ax.transAxes,
+    va='top', ha='left',
+    fontsize=7, color='darkgreen'
+)
+
+q1_roi2, med_roi2, q3_roi2 = np.percentile(ROI2_taus, [25, 50, 75])
+ax.axvline(med_roi2, color='darkred', linestyle='--', lw=1)
+ax.text(
+    0.02, 0.95,
+    f'ROI (ctrl.) median = {med_roi2:.2f}s\nIQR = [{q1_roi2:.2f}, {q3_roi2:.2f}]',
+    transform=ax.transAxes,
+    va='top', ha='left',
+    fontsize=7, color='darkred'
+)
+
+q1_neu, med_neu, q3_neu = np.percentile(NEU_taus, [25, 50, 75])
+ax.axvline(med_neu, color='grey', linestyle='--', lw=1)
+ax.text(
+    0.02, 0.85,
+    f'Neuropil median = {med_neu:.2f}s\nIQR = [{q1_neu:.2f}, {q3_neu:.2f}]',
+    transform=ax.transAxes,
+    va='top', ha='left',
+    fontsize=7, color='grey'
+    )
+
+ax.set(
+    xlabel='Tau (s)',
+    ylabel='ROI count',
+    title='Decay constant distribution'
+    )
+
+ax.legend(frameon=False, fontsize=7)
+
+for s in ['top', 'right']:
+    ax.spines[s].set_visible(False)
+
+fig.tight_layout()
+
+for ext in ['.png', '.pdf']:
+    fig.savefig(
+        save_stem / f'ROI_vs_neuropil_decay_tau_hist{ext}',
+        dpi=300,
+        bbox_inches='tight'
+    )
+
+
+#%% tau histogram (only ROI)
+bins = np.linspace(0, 4, 21)
+
+fig, ax = plt.subplots(figsize=(3, 2.4))
+
+ax.hist(
+    ROI_taus,
+    bins=bins,
+    color='darkgreen',
+    alpha=0.6,
+    edgecolor='none',
+    label='ROI'
+    )
+
+# medians + IQRs
+q1_roi, med_roi, q3_roi = np.percentile(ROI_taus, [25, 50, 75])
+ax.axvline(med_roi, color='darkgreen', linestyle='--', lw=1)
+ax.text(
+    0.02, 0.95,
+    f'ROI median = {med_roi:.2f}s\nIQR = [{q1_roi:.2f}, {q3_roi:.2f}]',
+    transform=ax.transAxes,
+    va='top', ha='left',
+    fontsize=7, color='darkgreen'
+)
+
+ax.set(
+    xlabel='Tau (s)',
+    ylabel='ROI count',
+    title='Decay constant distribution'
+    )
+
+ax.legend(frameon=False, fontsize=7)
+
+for s in ['top', 'right']:
+    ax.spines[s].set_visible(False)
+
+fig.tight_layout()
+
+for ext in ['.png', '.pdf']:
+    fig.savefig(
+        save_stem / f'ROI_vs_neuropil_decay_tau_hist_ROI_only{ext}',
+        dpi=300,
+        bbox_inches='tight'
+    )

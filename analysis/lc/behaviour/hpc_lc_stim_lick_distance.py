@@ -1,0 +1,261 @@
+# -*- coding: utf-8 -*-
+'''
+Created on Wed 23 Aug 17:18:12 2023
+Originally named lick_dist_comp_hpc_lc_stim.py
+
+compare opto stim vs baseline lickdist
+
+@author: Dinghao Luo
+
+'''
+
+#%% imports
+import numpy as np
+import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'Arial'
+import scipy.io as sio
+from scipy.stats import ranksums, wilcoxon, ttest_rel  # median used
+import sys
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+if str(repo_root / 'utils') not in sys.path:
+    sys.path.insert(0, str(repo_root / 'utils'))
+
+import rec_list
+from console_formatting import print_session
+import project_paths as pp
+pathOpt = rec_list.pathHPCLCopt[7:]
+
+# 0-2-0
+sess_list = [sess[-17:] for sess in pathOpt]
+
+n_bst = 1000  # hyperparameter for bootstrapping
+comp_method = 'baseline'
+print(f'\nbootstrap n = {n_bst}')
+print(f'comparison method = {comp_method}')
+
+
+#%% main
+all_licks_non_stim = []; all_licks_stim = []
+# all_mspeeds_non_stim = []; all_mspeeds_stim = []  # control
+# all_accel_non_stim = []; all_accel_stim = []  # control
+# all_pspeeds_non_stim = []; all_pspeeds_stim = []  # control
+# all_initacc_non_stim = []; all_initacc_stim = []  # control
+
+for sessname in sess_list:
+    print_session(sessname)
+
+    rec_stem = pp.MICEEXP_ROOT / f'ANMD{sessname[1:5]}' / sessname[:14] / sessname[:17]
+    infofilename = rec_stem / f'{sessname[:17]}_DataStructure_mazeSection1_TrialType1_Info.mat'
+
+    Info = sio.loadmat(infofilename)
+    pulseMethod = Info['beh'][0][0]['pulseMethod'][0]
+
+    # stim info
+    stim_cond = pulseMethod[np.where(pulseMethod!=0)][0]  # check stim condition
+    stim = [i for i, e in enumerate(pulseMethod) if e==stim_cond]
+
+    # licks
+    lickfilename = rec_stem / f'{sessname[:17]}_DataStructure_mazeSection1_TrialType1_alignRun_msess1.mat'
+    alignRun = sio.loadmat(lickfilename)
+
+    # ignore all 1st trials since it is before counting starts and is an empty cell
+    licks = alignRun['trialsRun']['lickLfpInd'][0][0][0][1:]
+    starts = alignRun['trialsRun']['startLfpInd'][0][0][0][1:]
+    dist = alignRun['trialsRun']['xMM'][0][0][0][1:]  # distance at each sample
+
+    first_licks = []
+    tot_trial = licks.shape[0]
+    for trial in range(tot_trial):
+        # licks
+        lk = [l[0] for l in licks[trial] if l-starts[trial] > 1250]  # exclude licks in the 1st second, as they could be carry-over licks from the last trial
+        if len(lk)!=0:  # append only if there is licks in this trial
+            for i in range(len(lk)):
+                ld = dist[trial][lk[0]-starts[trial]]/10
+                if ld > 30:  # filter out first licks before 30 (only starts counting at 30)
+                    first_licks.append(dist[trial][lk[0]-starts[trial]]/10)
+                    break
+            if ld <= 30:
+                first_licks.append(0)
+        else:
+            first_licks.append(0)
+
+    # stim licks
+    licks_stim = [first_licks[i-1] for i in stim if first_licks[i-1]!=0 and first_licks[i+1]!=0]
+
+    pval = [];
+    curr_licks_non_stim = []; curr_licks_stim = []
+
+    for i in range(n_bst):
+        # select same number of non_stim to match
+        non_stim_trials = np.where(pulseMethod==0)[0]
+        if comp_method == 'baseline':
+            selected_non_stim = non_stim_trials[np.random.randint(0, stim[0]-1, len(licks_stim))]
+            licks_non_stim = []
+            for t in selected_non_stim:
+                if first_licks[t-1]!=0:
+                    licks_non_stim.append(float(first_licks[t-1]))  # only compare trials with licks
+                else:
+                    licks_non_stim.append(float(first_licks[t]))
+        elif comp_method == 'stim_cont': # stim_control
+            selected_non_stim = [i+2 for i in stim]
+            licks_non_stim = [first_licks[i-1] for i in selected_non_stim if first_licks[i-1]!=0 and first_licks[i-3]!=0]
+
+        curr_licks_non_stim.append(licks_non_stim)
+        curr_licks_stim.append(licks_stim)
+
+        pval.append(ranksums(licks_non_stim, licks_stim)[1])
+
+    if stim_cond==2:
+        all_licks_non_stim.append(np.median(curr_licks_non_stim))
+        all_licks_stim.append(np.median(curr_licks_stim))
+
+    # licks plot
+    fig, ax = plt.subplots()
+    for p in ['top', 'right', 'left']:
+        ax.spines[p].set_visible(False)
+    ax.set(title='{}, stim={}'.format(sessname, stim_cond),
+           ylim=(0, 1.5), xlim=(30, 225),
+           xlabel='dist. 1st lick (cm)')
+    ax.set_yticks([.5, 1])
+    ax.set_yticklabels(['baseline', 'stim'])
+    ax.scatter(licks_non_stim, [.5]*len(licks_stim), color='grey')
+    ax.scatter(licks_stim, [1]*len(licks_stim), color='darkblue')
+    ax.plot([np.median(licks_non_stim), np.median(licks_stim)], [.5, 1],
+            color='grey', alpha=.5)
+    fig.suptitle('dist. 1st licks')
+    if comp_method == 'baseline':
+        fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / f'opto_lickdist_0{stim_cond}0_HPC_LCstim' / f'{sessname}.png',
+                    dpi=300,
+                    bbox_inches='tight')
+    elif comp_method == 'stim_cont':
+        fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / f'opto_lickdist_0{stim_cond}0_stim_cont_HPC_LCstim' / f'{sessname}.png',
+                    dpi=300,
+                    bbox_inches='tight')
+
+
+#%% summary statistics
+_, pval = wilcoxon(all_licks_non_stim, all_licks_stim)
+
+# licks summary
+fig, ax = plt.subplots(figsize=(3,4.5))
+
+bp = ax.boxplot([all_licks_non_stim, all_licks_stim],
+                positions=[.5, 2],
+                patch_artist=True,
+                notch='True')
+
+ax.scatter([.8]*len(all_licks_non_stim),
+           all_licks_non_stim,
+           s=10, c='grey', ec='none', lw=.5)
+
+ax.scatter([1.7]*len(all_licks_stim),
+           all_licks_stim,
+           s=10, c='royalblue', ec='none', lw=.5)
+
+colors = ['grey', 'royalblue']
+for patch, color in zip(bp['boxes'], colors):
+    patch.set_facecolor(color)
+
+bp['fliers'][0].set(marker ='o',
+                color ='#e7298a',
+                markersize=2,
+                alpha=0.5)
+bp['fliers'][1].set(marker ='o',
+                color ='#e7298a',
+                markersize=2,
+                alpha=0.5)
+
+for median in bp['medians']:
+    median.set(color='darkred',
+                linewidth=1)
+
+ax.plot([[.8]*len(all_licks_stim), [1.7]*len(all_licks_stim)], [all_licks_non_stim, all_licks_stim],
+        color='grey', alpha=.25, linewidth=1)
+ax.plot([.8, 1.7], [np.median(all_licks_non_stim), np.median(all_licks_stim)],
+        color='k', linewidth=2)
+ymin = min(min(all_licks_stim), min(all_licks_non_stim))-.5
+ymax = max(max(all_licks_stim), max(all_licks_non_stim))+.5
+ax.set(xlim=(0,2.5), ylim=(ymin,ymax),
+       ylabel='dist. 1st licks (cm)',
+       title='dist. 1st licks non-stim v stim, p={}'.format(np.round(pval, 4)))
+ax.set_xticks([.5, 2]); ax.set_xticklabels(['non-stim', 'stim'])
+for p in ['top', 'right', 'bottom']:
+    ax.spines[p].set_visible(False)
+fig.suptitle('distance 1st licks')
+
+if comp_method == 'baseline':
+    fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / 'opto_lickdist_020_HPC_LCstim' / 'summary_wilc.png',
+                dpi=500,
+                bbox_inches='tight')
+elif comp_method == 'stim_cont':
+    fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / 'opto_lickdist_020_stim_cont_HPC_LCstim' / 'summary_wilc.png',
+                dpi=500,
+                bbox_inches='tight')
+
+
+#%% summary statistics
+wilc_p = wilcoxon(all_licks_non_stim, all_licks_stim)[1]
+ttest_p = ttest_rel(all_licks_non_stim, all_licks_stim)[1]
+
+# licks summary
+fig, ax = plt.subplots(figsize=(2,3))
+
+vp = ax.violinplot([all_licks_non_stim, all_licks_stim],
+                   positions=[1, 2],
+                   showextrema=False)
+
+vp['bodies'][0].set_color('grey')
+vp['bodies'][1].set_color('royalblue')
+for i in [0,1]:
+    vp['bodies'][i].set_edgecolor('none')
+    vp['bodies'][i].set_alpha(.75)
+    b = vp['bodies'][i]
+    # get the centre
+    m = np.mean(b.get_paths()[0].vertices[:,0])
+    # make paths not go further right/left than the centre
+    if i==0:
+        b.get_paths()[0].vertices[:,0] = np.clip(b.get_paths()[0].vertices[:,0], -np.inf, m)
+    if i==1:
+        b.get_paths()[0].vertices[:,0] = np.clip(b.get_paths()[0].vertices[:,0], m, np.inf)
+
+ax.scatter([1.1]*len(all_licks_non_stim),
+           all_licks_non_stim,
+           s=10, c='grey', ec='none', lw=.5, alpha=.2)
+ax.scatter([1.9]*len(all_licks_stim),
+           all_licks_stim,
+           s=10, c='royalblue', ec='none', lw=.5, alpha=.2)
+ax.plot([[1.1]*len(all_licks_stim), [1.9]*len(all_licks_stim)], [all_licks_non_stim, all_licks_stim],
+        color='grey', alpha=.2, linewidth=1)
+
+ax.plot([1.1, 1.9], [np.median(all_licks_non_stim), np.median(all_licks_stim)],
+        color='grey', linewidth=2)
+ax.scatter(1.1, np.median(all_licks_non_stim),
+           s=30, c='grey', ec='none', lw=.5, zorder=2)
+ax.scatter(1.9, np.median(all_licks_stim),
+           s=30, c='royalblue', ec='none', lw=.5, zorder=2)
+ymin = min(min(all_licks_stim), min(all_licks_non_stim))-.5
+ymax = max(max(all_licks_stim), max(all_licks_non_stim))+.5
+ax.set(xlim=(.5,2.5),
+       yticks=[90, 120, 150, 180],
+       ylabel='dist. 1st licks (cm)',
+       title='dist. 1st licks ctrl v stim\nwilc_p={}\nttest_p={}'.format(round(wilc_p, 5), round(ttest_p, 5)))
+ax.set_xticks([1, 2]); ax.set_xticklabels(['ctrl.', 'stim.'])
+for p in ['top', 'right', 'bottom']:
+    ax.spines[p].set_visible(False)
+
+if comp_method == 'baseline':
+    fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / 'opto_lickdist_020' / 'summary.png',
+                dpi=500,
+                bbox_inches='tight')
+    fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / 'opto_lickdist_020' / 'summary.pdf',
+                bbox_inches='tight')
+elif comp_method == 'stim_cont':
+    fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / 'opto_lickdist_020_stim_cont' / 'summary.png',
+                dpi=500,
+                bbox_inches='tight')
+    fig.savefig(pp.LC_OPTO_EPHYS_FIGURES_STEM / 'opto_lickdist_020_stim_cont' / 'summary.pdf',
+                bbox_inches='tight')

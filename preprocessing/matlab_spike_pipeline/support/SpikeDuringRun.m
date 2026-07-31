@@ -1,0 +1,66 @@
+function SpikeDuringRun(path,fileName)
+% extract information for all the spikes during running (speed > certain threshold)
+%
+% e.g.: SpikeDuringRunVR('./','A111-20150301-01_DataStructure_mazeSection1_TrialType1')
+
+    %%%%%%%% check arguments
+    if nargin<2
+        disp('At least two arguments are needed for this function.');
+        return;
+    elseif nargin > 3
+        disp('Too many arguments');        
+        return;
+    end
+    
+    %%%%%%%%% load recording file
+    indexFileName = findstr(fileName, '.mat');
+    if(isempty(indexFileName))
+        fileNameInfo = [fileName '_Info.mat'];
+        fileNameExt = [fileName '_ext.mat'];
+        fileName = [fileName '.mat'];
+    else
+        fileNameInfo = [fileName(1:indexFileName(end)-1) '_Info.mat'];
+        fileNameExt = [fileName(1:indexFileName(end)-1) '_ext.mat'];
+    end 
+    fullPath = [path fileName];
+    if(exist(fullPath) == 0)
+        disp('File does not exist.');
+        return;
+    end
+    load(fullPath,'trials');
+    
+    fullPath = [path fileNameInfo];
+    if(exist(fullPath) == 0)
+        BasicInfo(path,fileName);
+    end
+    load(fullPath);
+    
+    GlobalConst;
+    
+    trialsExt = cell(1,beh.numTrials);
+    for i = 1:beh.numTrials
+        if(sum(beh.indGoodLap == i)>0)
+            trialsExt{i}.spikes = cell(1,rec.numNeurons);
+            trialsExt{i}.spikes20kHz = cell(1,rec.numNeurons);
+            trialsExt{i}.spikesThetaHil = cell(1,rec.numNeurons);
+            trialsExt{i}.spikesThetaLin = cell(1,rec.numNeurons);
+            trialsExt{i}.spikesMM = cell(1,rec.numNeurons);
+            trialsExt{i}.spikesSpeed = cell(1,rec.numNeurons);
+            
+            for j = 1:rec.numNeurons
+                ind = trials{i}.spikesSpeed{j} > minSpeed;
+                trialsExt{i}.spikes{j} = trials{i}.spikes{j}(ind);
+                trialsExt{i}.spikes20kHz{j} = trials{i}.spikes20kHz{j}(ind);
+                trialsExt{i}.spikesThetaHil{j} = trials{i}.spikesThetaHil{j}(ind);
+                trialsExt{i}.spikesThetaLin{j} = trials{i}.spikesThetaLin{j}(ind);
+                trialsExt{i}.spikesMM{j} = trials{i}.spikesMM{j}(ind);
+                trialsExt{i}.spikesSpeed{j} = trials{i}.spikesSpeed{j}(ind);
+            end
+            
+            trialsExt{i}.xMM = trials{i}.xMM(trials{i}.speed > minSpeed);
+        end
+    end
+    
+    fullPath = [path fileNameExt];
+    save(fullPath, 'trialsExt');
+end

@@ -1,0 +1,12 @@
+# local data and generated outputs
+data/
+figures/
+outputs/
+
+# Python working files
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Windows folder metadata
+Thumbs.db

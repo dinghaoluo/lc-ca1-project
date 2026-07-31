@@ -1,0 +1,10 @@
+# Created on 29 April 2026
+# tuned operating point used by the workbench; training recipes keep their own defaults
+models:
+  dlight_hpc_lc_opto:
+    checkpoint: data/imaging/fibre_sight/runs/dlight_hpc_lc_opto_unet/best.pt
+    threshold: 0.25
+    min_size: 45
+    max_size:
+    tta: true
+    description: recall-biased dLight HPC LC-opto axon ROI model

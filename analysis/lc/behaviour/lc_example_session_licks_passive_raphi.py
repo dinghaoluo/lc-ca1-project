@@ -1,0 +1,75 @@
+# -*- coding: utf-8 -*-
+'''
+Created on Thu Feb 23 16:04:32 2023
+Originally named egsess_lick_passive_raphi.py
+
+plot lick curves (beh example)
+
+@author: Dinghao Luo
+'''
+
+#%% imports
+import numpy as np
+import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'Arial'
+import scipy.io as sio
+from scipy.stats import sem
+from pathlib import Path
+import sys
+
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root / 'utils') not in sys.path:
+    sys.path.insert(0, str(repo_root / 'utils'))
+import project_paths as pp
+pp.LC_FIGURES_STEM.mkdir(parents=True, exist_ok=True)
+
+
+#%% main
+rec_used = 'Raphi A009-20190128-01'
+print('recording used: {}'.format(rec_used))
+
+recdata_path = (
+    pp.RAPHAEL_ROOT / 'ANM009' / 'A009-20190128' / 'A009-20190128-01'
+    / 'A009-20190128-01_DataStructure_mazeSection1_TrialType1_lickDist_msess1_Run1.mat'
+)
+
+recdata = sio.loadmat(recdata_path)
+all_licks = recdata['lickOverDist'][0][0][0]
+
+# access the depths of lick data (how is this so deep jesus)
+sess_licks_mean = np.mean(all_licks, axis=0)[:220]
+sess_licks_sem = sem(all_licks, axis=0)[:220]
+
+
+#%% plotting
+fig, ax = plt.subplots(figsize=(2.2,1.8))
+ax.set(title='avg lick profile',
+       xlabel='distance (cm)', ylabel='lick rate (Hz)',
+       xlim=(30, 220), ylim=(0, 5.5))
+for p in ['right', 'top']:
+    ax.spines[p].set_visible(False)
+
+xaxis = np.arange(len(sess_licks_mean))
+ax.plot(xaxis, sess_licks_mean, 'k')
+ax.fill_between(xaxis,
+                sess_licks_mean-sess_licks_sem,
+                sess_licks_mean+sess_licks_sem,
+                color='grey', alpha=.25,
+                edgecolor='none')
+
+plt.show()
+fig.savefig(pp.LC_FIGURES_STEM / 'egsess_lick_passive.png',
+            dpi=300,
+            bbox_inches='tight')
+fig.savefig(pp.LC_FIGURES_STEM / 'egsess_lick_passive.pdf',
+            bbox_inches='tight')
+
+rew_ln, = ax.plot([180, 180], [0, 10], color='limegreen', alpha=.45)
+ax.legend([rew_ln], ['reward'], loc='upper left', frameon=False, fontsize=8)
+
+plt.show()
+fig.savefig(pp.LC_FIGURES_STEM / 'egsess_lick_passive_w_rew.png',
+            dpi=300,
+            bbox_inches='tight')
+fig.savefig(pp.LC_FIGURES_STEM / 'egsess_lick_passive_w_rew.pdf',
+            bbox_inches='tight')

@@ -1,0 +1,1053 @@
+function PyrInitPeakAllRec(methodKMean,taskSel)
+    
+    methodTheta = 1;
+    minFR = 0.15;
+    maxFR = 7;
+    if(nargin == 0)
+        methodKMean = 2;
+    end
+    
+    RecordingList;
+    pathAnal0 = 'Z:\Yingxue\DataAnalysisRaphi\Pyramidal\';
+    if(taskSel == 1) % including all the neurons
+        pathAnal = 'Z:\Yingxue\DataAnalysisRaphi\Pyramidal\';
+    elseif(taskSel == 2) % including AL and PL neurons
+        pathAnal = 'Z:\Yingxue\DataAnalysisRaphi\PyramidalALPL\';
+    else
+        pathAnal = 'Z:\Yingxue\DataAnalysisRaphi\PyramidalAL\';
+    end
+    
+    sampleFq = 1250;
+    
+    load([pathAnal0 'autoCorrPyrAllRec.mat']);
+    if(exist([pathAnal0 'initPeakPyrAllRec.mat']))
+        load([pathAnal0 'initPeakPyrAllRec.mat']);
+    end
+    
+    nNeuWithField = [modPyrNoCue.nNeuWithField modPyrAL.nNeuWithField modPyrPL.nNeuWithField];
+    nNeuWithFieldAligned = [modPyrNoCue.nNeuWithFieldAligned modPyrAL.nNeuWithFieldAligned ...
+        modPyrPL.nNeuWithFieldAligned];
+    isNeuWithField = [modPyrNoCue.isNeuWithField modPyrAL.isNeuWithField modPyrPL.isNeuWithField];
+    isNeuWithFieldAligned = [modPyrNoCue.isNeuWithFieldAligned modPyrAL.isNeuWithFieldAligned modPyrPL.isNeuWithFieldAligned];
+    
+%     disp('No cue - peak firing rate')
+%     modPyr1NoCue = accumPyr2(listRecordingsNoCuePath,...
+%         listRecordingsNoCueFileName,mazeSessionNoCue,autoCorrPyrAll,...
+%         nNeuWithField,isNeuWithField,nNeuWithFieldAligned,isNeuWithFieldAligned,...
+%         minFR,maxFR,1,sampleFq);
+%     
+%     disp('Active licking - peak firing rate')
+%     modPyr1AL = accumPyr2(listRecordingsActiveLickPath,...
+%         listRecordingsActiveLickFileName,mazeSessionActiveLick,autoCorrPyrAll,...
+%         nNeuWithField,isNeuWithField,nNeuWithFieldAligned,isNeuWithFieldAligned,...
+%         minFR,maxFR,2,sampleFq);
+%     
+%     disp('Passive licking - peak firing rate')
+%     modPyr1PL = accumPyr2(listRecordingsPassiveLickPath,...
+%         listRecordingsPassiveLickFileName,mazeSessionPassiveLick,autoCorrPyrAll,...
+%         nNeuWithField,isNeuWithField,nNeuWithFieldAligned,isNeuWithFieldAligned,...
+%         minFR,maxFR,3,sampleFq);
+%     
+%     save([pathAnal0 'initPeakPyrAllRec.mat'],'modPyr1NoCue','modPyr1AL','modPyr1PL'); 
+%     
+    numField.NoCueIndRec = find(modPyr1NoCue.taskPerRec ~= 0);
+    numField.NoCue = modPyr1NoCue.nNeuWithFieldPerRec(numField.NoCueIndRec);
+    numField.NoCuePercNeu =  modPyr1NoCue.nNeuWithFieldPerRec(numField.NoCueIndRec)./...
+         modPyr1NoCue.nNeuPerRec(numField.NoCueIndRec);
+    numField.ALIndRec = find(modPyr1AL.taskPerRec ~= 0);
+    numField.PLIndRec = find(modPyr1PL.taskPerRec ~= 0);
+    numField.ALPL = [modPyr1AL.nNeuWithFieldPerRec(numField.ALIndRec),...
+        modPyr1PL.nNeuWithFieldPerRec(numField.PLIndRec)];
+    numField.ALPLPercNeu = [modPyr1AL.nNeuWithFieldPerRec(numField.ALIndRec)./...
+        modPyr1AL.nNeuPerRec(numField.ALIndRec),...
+        modPyr1PL.nNeuWithFieldPerRec(numField.PLIndRec)./...
+        modPyr1PL.nNeuPerRec(numField.PLIndRec)];
+    numField.pRSNumField = ranksum(numField.NoCue,numField.ALPL);
+    numField.pRSPercField = ranksum(numField.NoCuePercNeu,numField.ALPLPercNeu);
+        
+    numFieldAligned.NoCueIndRec = find(modPyr1NoCue.taskPerRec ~= 0);
+    numFieldAligned.NoCue = modPyr1NoCue.nNeuWithFieldAlignedPerRec(numFieldAligned.NoCueIndRec);
+    numFieldAligned.NoCuePercNeu =  modPyr1NoCue.nNeuWithFieldAlignedPerRec(numFieldAligned.NoCueIndRec)./...
+         modPyr1NoCue.nNeuPerRec(numFieldAligned.NoCueIndRec);
+    numFieldAligned.ALIndRec = find(modPyr1AL.taskPerRec ~= 0);
+    numFieldAligned.PLIndRec = find(modPyr1PL.taskPerRec ~= 0);
+    numFieldAligned.ALPL = [modPyr1AL.nNeuWithFieldAlignedPerRec(numFieldAligned.ALIndRec),...
+        modPyr1PL.nNeuWithFieldAlignedPerRec(numFieldAligned.PLIndRec)];
+    numFieldAligned.ALPLPercNeu = [modPyr1AL.nNeuWithFieldAlignedPerRec(numFieldAligned.ALIndRec)./...
+        modPyr1AL.nNeuPerRec(numFieldAligned.ALIndRec),...
+        modPyr1PL.nNeuWithFieldAlignedPerRec(numFieldAligned.PLIndRec)./...
+        modPyr1PL.nNeuPerRec(numFieldAligned.PLIndRec)];
+    numFieldAligned.pRSNumField = ranksum(numFieldAligned.NoCue,numFieldAligned.ALPL);
+    numFieldAligned.pRSPercField = ranksum(numFieldAligned.NoCuePercNeu,numFieldAligned.ALPLPercNeu);
+        
+    plotBars(numField.NoCue,numField.ALPL,[mean(numField.NoCue),mean(numField.ALPL)],...
+        [std(numField.NoCue)/sqrt(length(numField.NoCue)),std(numField.ALPL)/sqrt(length(numField.ALPL))],...
+        '','No. fields', ['p=' num2str(numField.pRSNumField)],pathAnal0,'NumFieldNoCueVsALPLGood')
+    plotBars(numFieldAligned.NoCue,numFieldAligned.ALPL,[mean(numFieldAligned.NoCue),mean(numFieldAligned.ALPL)],...
+        [std(numFieldAligned.NoCue)/sqrt(length(numFieldAligned.NoCue)),...
+        std(numFieldAligned.ALPL)/sqrt(length(numFieldAligned.ALPL))],...
+        '','No. fields (Aligned)', ['p=' num2str(numFieldAligned.pRSNumField)],pathAnal0,'NumFieldAlignedNoCueVsALPLGood')
+    
+    plotBars(numField.NoCuePercNeu,numField.ALPLPercNeu,[mean(numField.NoCuePercNeu),mean(numField.ALPLPercNeu)],...
+        [std(numField.NoCuePercNeu)/sqrt(length(numField.NoCuePercNeu)),std(numField.ALPLPercNeu)/sqrt(length(numField.ALPLPercNeu))],...
+        '','Perc. neurons with field', ['p=' num2str(numField.pRSPercField)],pathAnal0,'PercFieldNoCueVsALPLGood')
+    plotBars(numFieldAligned.NoCuePercNeu,numFieldAligned.ALPLPercNeu,...
+        [mean(numFieldAligned.NoCuePercNeu),mean(numFieldAligned.ALPLPercNeu)],...
+        [std(numFieldAligned.NoCuePercNeu)/sqrt(length(numFieldAligned.NoCuePercNeu)),...
+        std(numFieldAligned.ALPLPercNeu)/sqrt(length(numFieldAligned.ALPLPercNeu))],...
+        '','Perc. neurons with field (Aligned)', ['p=' num2str(numFieldAligned.pRSPercField)],...
+        pathAnal0,'PercFieldAlignedNoCueVsALPLGood')
+    save([pathAnal0 'initPeakPyrAllRec.mat'],'numField','numFieldAligned','-append');
+    
+    if(taskSel == 1)
+        task = [modPyr1NoCue.task modPyr1AL.task modPyr1PL.task];
+        taskBad = [modPyr1NoCue.taskBad modPyr1AL.taskBad modPyr1PL.taskBad];
+        indRec = [modPyr1NoCue.indRec modPyr1AL.indRec modPyr1PL.indRec];
+        indRecBad = [modPyr1NoCue.indRecBad modPyr1AL.indRecBad modPyr1PL.indRecBad];
+        indNeu = [modPyr1NoCue.indNeu modPyr1AL.indNeu modPyr1PL.indNeu];
+        indNeuBad = [modPyr1NoCue.indNeuBad modPyr1AL.indNeuBad modPyr1PL.indNeuBad];
+        relDepthNeuHDef = [modPyr1NoCue.indNeuBad modPyr1AL.relDepthNeuHDef modPyr1PL.relDepthNeuHDef];
+        isNeuWithField = [modPyr1NoCue.isNeuWithField modPyr1AL.isNeuWithField modPyr1PL.isNeuWithField];
+        nNeuWithField = [modPyr1NoCue.nNeuWithField modPyr1AL.nNeuWithField modPyr1PL.nNeuWithField];
+        isNeuWithFieldAligned = [modPyr1NoCue.isNeuWithFieldAligned modPyr1AL.isNeuWithFieldAligned...
+            modPyr1PL.isNeuWithFieldAligned];
+        nNeuWithFieldAligned = [modPyr1NoCue.nNeuWithFieldAligned modPyr1AL.nNeuWithFieldAligned...
+            modPyr1PL.nNeuWithFieldAligned];
+        avgFRProfile = [modPyr1NoCue.avgFRProfile; modPyr1AL.avgFRProfile; modPyr1PL.avgFRProfile];
+        avgFRProfileBad = [modPyr1NoCue.avgFRProfileBad; modPyr1AL.avgFRProfileBad; modPyr1PL.avgFRProfileBad];
+        
+        if(methodKMean == 1)
+            idxC = [modPyr1NoCue.idxC1 modPyr1AL.idxC1 modPyr1PL.idxC1];
+            idxCBad = [modPyr1NoCue.idxC1Bad modPyr1AL.idxC1Bad modPyr1PL.idxC1Bad];
+        elseif(methodKMean == 2)
+            idxC = [modPyr1NoCue.idxC2 modPyr1AL.idxC2 modPyr1PL.idxC2];
+            idxCBad = [modPyr1NoCue.idxC2Bad modPyr1AL.idxC2Bad modPyr1PL.idxC2Bad];
+        elseif(methodKMean == 3)
+            idxC = [modPyr1NoCue.idxC3 modPyr1AL.idxC3 modPyr1PL.idxC3];
+            idxCBad = [modPyr1NoCue.idxC3Bad modPyr1AL.idxC3Bad modPyr1PL.idxC3Bad];
+        end
+    elseif(taskSel == 2)
+        task = [modPyr1AL.task modPyr1PL.task];
+        taskBad = [modPyr1AL.taskBad modPyr1PL.taskBad];
+        indRec = [modPyr1AL.indRec modPyr1PL.indRec];
+        indRecBad = [modPyr1AL.indRecBad modPyr1PL.indRecBad];
+        indNeu = [modPyr1AL.indNeu modPyr1PL.indNeu];
+        indNeuBad = [modPyr1AL.indNeuBad modPyr1PL.indNeuBad];
+        relDepthNeuHDef = [modPyr1AL.relDepthNeuHDef modPyr1PL.relDepthNeuHDef];
+        isNeuWithField = [modPyr1AL.isNeuWithField modPyr1PL.isNeuWithField];
+        nNeuWithField = [modPyr1AL.nNeuWithField modPyr1PL.nNeuWithField];
+        isNeuWithFieldAligned = [modPyr1AL.isNeuWithFieldAligned...
+            modPyr1PL.isNeuWithFieldAligned];
+        nNeuWithFieldAligned = [modPyr1AL.nNeuWithFieldAligned...
+            modPyr1PL.nNeuWithFieldAligned];
+        avgFRProfile = [modPyr1AL.avgFRProfile; modPyr1PL.avgFRProfile];
+        avgFRProfileBad = [modPyr1AL.avgFRProfileBad; modPyr1PL.avgFRProfileBad];
+        
+        if(methodKMean == 1)
+            idxC = [modPyr1AL.idxC1 modPyr1PL.idxC1];
+            idxCBad = [modPyr1AL.idxC1Bad modPyr1PL.idxC1Bad];
+        elseif(methodKMean == 2)
+            idxC = [modPyr1AL.idxC2 modPyr1PL.idxC2];
+            idxCBad = [modPyr1AL.idxC2Bad modPyr1PL.idxC2Bad];
+        elseif(methodKMean == 3)
+            idxC = [modPyr1AL.idxC3 modPyr1PL.idxC3];
+            idxCBad = [modPyr1AL.idxC3Bad modPyr1PL.idxC3Bad];
+        end
+    else
+        task = modPyr1AL.task;
+        taskBad = modPyr1AL.taskBad;
+        indRec = modPyr1AL.indRec;
+        indRecBad = modPyr1AL.indRecBad;
+        indNeu = modPyr1AL.indNeu;
+        indNeuBad = modPyr1AL.indNeuBad;
+        relDepthNeuHDef = modPyr1AL.relDepthNeuHDef;
+        isNeuWithField = modPyr1AL.isNeuWithField;
+        nNeuWithField = modPyr1AL.nNeuWithField;
+        isNeuWithFieldAligned = modPyr1AL.isNeuWithFieldAligned;
+        nNeuWithFieldAligned = modPyr1AL.nNeuWithFieldAligned;
+        avgFRProfile = modPyr1AL.avgFRProfile; 
+        avgFRProfileBad = modPyr1AL.avgFRProfileBad;
+        
+        if(methodKMean == 1)
+            idxC = modPyr1AL.idxC1; 
+            idxCBad = modPyr1AL.idxC1Bad;
+        elseif(methodKMean == 2)
+            idxC = modPyr1AL.idxC2;
+            idxCBad = modPyr1AL.idxC2Bad;
+        elseif(methodKMean == 3)
+            idxC = modPyr1AL.idxC3;
+            idxCBad = modPyr1AL.idxC3Bad;
+        end
+    end     
+            
+    avgFRProfileNorm = zeros(size(avgFRProfile,1),size(avgFRProfile,2));
+    for i = 1:size(avgFRProfile,1)
+        if(max(avgFRProfile(i,:)) ~= 0)
+            avgFRProfileNorm(i,:) = avgFRProfile(i,:)/max(avgFRProfile(i,:));
+        end
+    end
+    avgFRProfileNormBad = zeros(size(avgFRProfileBad,1),size(avgFRProfileBad,2));
+    for i = 1:size(avgFRProfileBad,1)
+        if(max(avgFRProfileBad(i,:)) ~= 0)
+            avgFRProfileNormBad(i,:) = avgFRProfileBad(i,:)/max(avgFRProfileBad(i,:));
+        end
+    end
+    
+    FRProfileMean = accumMean(avgFRProfile,modPyr1NoCue.timeStepRun);
+    
+    FRProfileMeanBad = accumMean(avgFRProfileBad,modPyr1NoCue.timeStepRun);
+    
+    % compare within the same cluster recordings and neurons with/without
+    % fields
+    FRProfileMeanStatC = accumMeanStatC(FRProfileMean,idxC,nNeuWithField,isNeuWithField);
+    
+    % compare the firing rate change to baseline, between C1 and C2
+    FRProfileMeanStatC1C2 = accumMeanStatCCmp(FRProfileMean,idxC);
+    
+    % compare good and bad trials
+    FRProfileMeanStatGoodBad = accumMeanStatCGoodBad(FRProfileMean,FRProfileMeanBad,idxC,idxCBad);
+    
+    save([pathAnal 'initPeakPyrAllRec_km' num2str(methodKMean) '.mat'],'FRProfileMean','FRProfileMeanBad',...
+        'FRProfileMeanStatC','FRProfileMeanStatC1C2','FRProfileMeanStatGoodBad'); 
+    
+    colorSel = 0;
+    % all the recordings for each cluster
+    for i = 1:max(idxC)
+%         plotAvgFRProfile(modPyr1NoCue.timeStepRun,...
+%             avgFRProfile(idxC == i,:),['C' num2str(i) ' FR (Hz)'],...
+%             ['Pyr_FRProfileC' num2str(i)],...
+%             pathAnal,[])
+        
+        plotBoxPlot(FRProfileMean.meanAvgFRProfileBaseline(idxC == i),...
+            FRProfileMean.meanAvgFRProfile0to1(idxC == i),...
+            ['C' num2str(i) ' average FR (Hz) BL vs 0to1s'],...
+            ['Pyr_FRMeanC' num2str(i) 'BL-0to1Box'],...
+            pathAnal,[-1 8],FRProfileMeanStatC.pRS0to1VsBL(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.meanAvgFRProfileBaseline(idxC == i),...
+            FRProfileMean.meanAvgFRProfileBefRun(idxC == i),...
+            ['C' num2str(i) ' average FR (Hz) BL vs BefRun'],...
+            ['Pyr_FRMeanC' num2str(i) 'BL-BefRunBox'],...
+            pathAnal,[-1 8],FRProfileMeanStatC.pRSBefRunVsBL(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.meanAvgFRProfileBaseline(idxC == i),...
+            FRProfileMean.meanAvgFRProfile3to5(idxC == i),...
+            ['C' num2str(i) ' average FR (Hz) BL vs 3to5s'],...
+            ['Pyr_FRMeanC' num2str(i) 'BL-3to5Box'],...
+            pathAnal,[-1 8],FRProfileMeanStatC.pRS3to5VsBL(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.meanAvgFRProfileBefRun(idxC == i),...
+            FRProfileMean.meanAvgFRProfile0to1(idxC == i),...
+            ['C' num2str(i) ' average FR (Hz) BefRun vs 0to1s'],...
+            ['Pyr_FRMeanC' num2str(i) 'BefRun-0to1Box'],...
+            pathAnal,[-1 8],FRProfileMeanStatC.pRSBefRunVs0to1(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.meanAvgFRProfileBefRun(idxC == i),...
+            FRProfileMean.meanAvgFRProfile3to5(idxC == i),...
+            ['C' num2str(i) ' average FR (Hz) BefRun vs 3to5s'],...
+            ['Pyr_FRMeanC' num2str(i) 'BefRun-3to5Box'],...
+            pathAnal,[-1 8],FRProfileMeanStatC.pRS3to5VsBefRun(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.meanAvgFRProfile0to1(idxC == i),...
+            FRProfileMean.meanAvgFRProfile3to5(idxC == i),...
+            ['C' num2str(i) ' average FR (Hz) 0to1s vs 3to5s'],...
+            ['Pyr_FRMeanC' num2str(i) '0to1-3to5Box'],...
+            pathAnal,[-1 8],FRProfileMeanStatC.pRS3to5Vs0to1(i),colorSel);
+    end
+    
+    %% recordings with fields for each cluster
+    for i = 1:max(idxC)
+        indCurCField = idxC == i & nNeuWithField > 1;
+        indCurCNoField = idxC == i & nNeuWithField < 1;
+        plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfile(indCurCField,:),avgFRProfile(indCurCNoField,:),...
+            ['C' num2str(i) ' FR (Hz) F vs. NoF'],...
+            ['Pyr_FRProfileCFieldNoField' num2str(i)],...
+            pathAnal,[1 2.5])
+        
+        plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfileNorm(indCurCField,:),avgFRProfileNorm(indCurCNoField,:),...
+            ['C' num2str(i) ' Norm FR F vs. NoF'],...
+            ['Pyr_FRProfileNormCFieldNoField' num2str(i)],...
+            pathAnal,[0.2 0.45])
+        
+        plotBoxPlot(FRProfileMean.percChange0to1VsBL(indCurCField),...
+            FRProfileMean.percChange0to1VsBL(indCurCNoField),...
+            ['C' num2str(i) ' average FR change 0-1s/BL F/NoF'],...
+            ['Pyr_FRChangeC' num2str(i) '0to1-BLFieldNoFieldBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatC.pRSPercChange0to1VsBLFieldVsNoField(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVsBL(indCurCField),...
+            FRProfileMean.percChangeBefRunVsBL(indCurCNoField),...
+            ['C' num2str(i) ' average FR change BefRun/BL F/NoF'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-BLFieldNoFieldBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatC.pRSPercChangeBefRunVsBLFieldVsNoField(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVs0to1(indCurCField),...
+            FRProfileMean.percChangeBefRunVs0to1(indCurCNoField),...
+            ['C' num2str(i) ' average FR change BefRun/0to1s F/NoF'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-0to1FieldNoFieldBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatC.pRSPercChangeBefRunVs0to1FieldVsNoField(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChange0to1Vs3to5(indCurCField),...
+            FRProfileMean.percChange0to1Vs3to5(indCurCNoField),...
+            ['C' num2str(i) ' average FR change 0-1s/3-5s F/NoF'],...
+            ['Pyr_FRChangeC' num2str(i) '0to1-3to5FieldNoFieldBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatC.pRSPercChange0to1Vs3to5FieldVsNoField(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVs3to5(indCurCField),...
+            FRProfileMean.percChangeBefRunVs3to5(indCurCNoField),...
+            ['C' num2str(i) ' average FR change BefRun/3-5s F/NoF'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-3to5FieldNoFieldBox'],...
+            pathAnal,[-1 8],FRProfileMeanStatC.pRSPercChangeBefRunVs3to5FieldVsNoField(i),colorSel);
+    end
+    
+    %% neurons with and without field for each cluster
+    for i = 1:max(idxC)
+        indCurCField = idxC == i & isNeuWithField == 1;
+        indCurCNoField = idxC == i & isNeuWithField == 0;
+        plotBoxPlot(FRProfileMean.percChange0to1VsBL(indCurCField),...
+            FRProfileMean.percChange0to1VsBL(indCurCNoField),...
+            ['C' num2str(i) ' average FR change 0-1s/BL FN/NoFN'],...
+            ['Pyr_FRChangeC' num2str(i) '0to1-BLFieldNeuNoFieldNeuBox'],...
+            pathAnal,[-1 15],FRProfileMeanStatC.pRSPercChange0to1VsBLFieldNeuVsNoFieldNeu(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVsBL(indCurCField),...
+            FRProfileMean.percChangeBefRunVsBL(indCurCNoField),...
+            ['C' num2str(i) ' average FR change BefRun/BL FN/NoFN'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-BLFieldNeuNoFieldNeuBox'],...
+            pathAnal,[-1 15],FRProfileMeanStatC.pRSPercChangeBefRunVsBLFieldNeuVsNoFieldNeu(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVs0to1(indCurCField),...
+            FRProfileMean.percChangeBefRunVs0to1(indCurCNoField),...
+            ['C' num2str(i) ' average FR change BefRun/0to1s FN/NoFN'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-0to1FieldNoFieldNeuBox'],...
+            pathAnal,[-1 15],FRProfileMeanStatC.pRSPercChangeBefRunVs0to1FieldNeuVsNoFieldNeu(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChange0to1Vs3to5(indCurCField),...
+            FRProfileMean.percChange0to1Vs3to5(indCurCNoField),...
+            ['C' num2str(i) ' average FR change 0-1s/3-5s FN/NoFN'],...
+            ['Pyr_FRChangeC' num2str(i) '0to1-3to5FieldNeuNoFieldNeuBox'],...
+            pathAnal,[-1 15],FRProfileMeanStatC.pRSPercChange0to1Vs3to5FieldNeuVsNoFieldNeu(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVs3to5(indCurCField),...
+            FRProfileMean.percChangeBefRunVs3to5(indCurCNoField),...
+            ['C' num2str(i) ' average FR change BefRun/3-5s FNeu/NoFNeu'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-3to5FieldNeuNoFieldNeuBox'],...
+            pathAnal,[-1 15],FRProfileMeanStatC.pRSPercChangeBefRunVs3to5FieldNeuVsNoFieldNeu(i),colorSel);
+    end
+    
+    %% FR change good vs. bad trials for each cluster
+    for i = 1:max(idxC)
+        plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfile(idxC == i,:),avgFRProfileBad(idxCBad == i,:),...
+            ['C' num2str(i) ' FR (Hz) Good vs. Bad'],...
+            ['Pyr_FRProfileCGoodVsBad' num2str(i)],...
+            pathAnal,[1 2.5])
+        
+        plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfileNorm(idxC == i,:),avgFRProfileNormBad(idxCBad == i,:),...
+            ['C' num2str(i) ' Norm Good vs. Bad'],...
+            ['Pyr_FRProfileNormCGoodVsBad' num2str(i)],...
+            pathAnal,[0.2 0.4])
+        
+        plotBoxPlot(FRProfileMean.percChange0to1VsBL(idxC == i),...
+            FRProfileMeanBad.percChange0to1VsBL(idxCBad == i),...
+            ['C' num2str(i) ' average FR change 0-1s/BL G/B'],...
+            ['Pyr_FRChangeC' num2str(i) '0to1-BLGoodBadBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChange0to1VsBL(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVsBL(idxC == i),...
+            FRProfileMeanBad.percChangeBefRunVsBL(idxCBad == i),...
+            ['C' num2str(i) ' average FR change BefRun/BL G/B'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-BLGoodBadBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChangeBefRunVsBL(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVs0to1(idxC == i),...
+            FRProfileMeanBad.percChangeBefRunVs0to1(idxCBad == i),...
+            ['C' num2str(i) ' average FR change BefRun/0to1s G/B'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-0to1GoodBadBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChangeBefRunVs0to1(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChange0to1Vs3to5(idxC == i),...
+            FRProfileMeanBad.percChange0to1Vs3to5(idxCBad == i),...
+            ['C' num2str(i) ' average FR change 0-1s/3-5s G/B'],...
+            ['Pyr_FRChangeC' num2str(i) '0to1-3to5GoodBadBox'],...
+            pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChange0to1Vs3to5(i),colorSel);
+        
+        plotBoxPlot(FRProfileMean.percChangeBefRunVs3to5(idxC == i),...
+            FRProfileMeanBad.percChangeBefRunVs3to5(idxCBad == i),...
+            ['C' num2str(i) ' average FR change BefRun/3-5s G/B'],...
+            ['Pyr_FRChangeC' num2str(i) 'BefRun-3to5Box'],...
+            pathAnal,[-1 8],FRProfileMeanStatGoodBad.pRSPercChangeBefRunVs3to5(i),colorSel);
+    end
+    
+    %% recordings with vs without fields
+    indField = nNeuWithField > 1;
+    indNoField = nNeuWithField < 1;
+    plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfile(indField,:),avgFRProfile(indNoField,:),...
+            ['FR (Hz) All F vs. NoF'],...
+            ['Pyr_FRProfileAllFieldNoField'],...
+            pathAnal,[1 2.5])
+        
+    plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfileNorm(indField,:),avgFRProfileNorm(indNoField,:),...
+            ['Norm FR All F vs. NoF'],...
+            ['Pyr_FRProfileNormAllFieldNoField'],...
+            pathAnal,[0.2 0.4])
+    
+    %% clusters 1 and 2
+    idxC1 = idxC == 1;
+    idxC2 = idxC == 2;
+    plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfile(idxC1,:),avgFRProfile(idxC2,:),...
+            ['FR (Hz) C1-C2'],...
+            ['Pyr_FRProfileC1-C2'],...
+            pathAnal,[1 2.5])
+        
+    plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfileNorm(idxC1,:),avgFRProfileNorm(idxC2,:),...
+            ['Norm FR C1-C2'],...
+            ['Pyr_FRProfileNormC1-C2'],...
+            pathAnal,[0.2 0.4])
+        
+    plotBoxPlot(FRProfileMean.percChange0to1VsBL(idxC1),...
+        FRProfileMean.percChange0to1VsBL(idxC2),...
+        ['average FR change 0-1s/BL C1/C2'],...
+        ['Pyr_FRChange0to1-BLC1-C2Box'],...
+        pathAnal,[-1 4],FRProfileMeanStatC1C2.pRSPercChange0to1VsBLC,colorSel);
+
+    plotBoxPlot(FRProfileMean.percChangeBefRunVsBL(idxC1),...
+        FRProfileMean.percChangeBefRunVsBL(idxC2),...
+        ['average FR change BefRun/BL C1/C2'],...
+        ['Pyr_FRChangeBefRun-BLC1-C2Box'],...
+        pathAnal,[-1 4],FRProfileMeanStatC1C2.pRSPercChangeBefRunVsBLC,colorSel);
+    
+    plotBoxPlot(FRProfileMean.percChangeBefRunVs0to1(idxC1),...
+        FRProfileMean.percChangeBefRunVs0to1(idxC2),...
+        ['average FR change BefRun/0to1s C1/C2'],...
+        ['Pyr_FRChangeBefRun-0to1C1-C2Box'],...
+        pathAnal,[-1 4],FRProfileMeanStatC1C2.pRSPercChangeBefRunVs0to1C,colorSel);
+
+    plotBoxPlot(FRProfileMean.percChange0to1Vs3to5(idxC1),...
+        FRProfileMean.percChange0to1Vs3to5(idxC2),...
+        ['average FR change 0-1s/3-5s C1/C2'],...
+        ['Pyr_FRChange0to1-3to5C1-C2Box'],...
+        pathAnal,[-1 4],FRProfileMeanStatC1C2.pRSPercChange0to1Vs3to5C,colorSel);
+
+    plotBoxPlot(FRProfileMean.percChangeBefRunVs3to5(idxC1),...
+        FRProfileMean.percChangeBefRunVs3to5(idxC2),...
+        ['average FR change BefRun/3-5s C1/C2'],...
+        ['Pyr_FRChangeBefRun-3to5C1-C2Box'],...
+        pathAnal,[-1 4],FRProfileMeanStatC1C2.pRSPercChangeBefRunVs3to5C,colorSel);
+       
+    %% FR change good vs. bad trials
+    plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfile,avgFRProfileBad,...
+            'FR (Hz) Good vs. Bad',...
+            'Pyr_FRProfileGoodVsBadAll',...
+            pathAnal,[1.5 2.5])
+        
+    plotAvgFRProfileCmp(modPyr1NoCue.timeStepRun,...
+            avgFRProfileNorm,avgFRProfileNormBad,...
+            'FR (Hz) Good vs. Bad',...
+            'Pyr_FRProfileNormGoodVsBadAll',...
+            pathAnal,[0.2 0.4])
+    
+    plotBoxPlot(FRProfileMean.percChange0to1VsBL,...
+        FRProfileMeanBad.percChange0to1VsBL,...
+        ['average FR change 0-1s/BL G/B'],...
+        ['Pyr_FRChange0to1-BLGoodBadBox'],...
+        pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChange0to1VsBLAll,colorSel);
+
+    plotBoxPlot(FRProfileMean.percChangeBefRunVsBL,...
+        FRProfileMeanBad.percChangeBefRunVsBL,...
+        ['average FR change BefRun/BL G/B'],...
+        ['Pyr_FRChangeBefRun-BLGoodBadBox'],...
+        pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChangeBefRunVsBLAll,colorSel);
+
+    plotBoxPlot(FRProfileMean.percChangeBefRunVs0to1,...
+        FRProfileMeanBad.percChangeBefRunVs0to1,...
+        ['average FR change BefRun/0to1s G/B'],...
+        ['Pyr_FRChangeBefRun-0to1GoodBadBox'],...
+        pathAnal,[-1 5],FRProfileMeanStatGoodBad.pRSPercChangeBefRunVs0to1All,colorSel);
+    
+    plotBoxPlot(FRProfileMean.percChange0to1Vs3to5,...
+        FRProfileMeanBad.percChange0to1Vs3to5,...
+        ['average FR change 0-1s/3-5s G/B'],...
+        ['Pyr_FRChange0to1-3to5GoodBadBox'],...
+        pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChange0to1Vs3to5All,colorSel);
+
+    plotBoxPlot(FRProfileMean.percChangeBefRunVs3to5,...
+        FRProfileMeanBad.percChangeBefRunVs3to5,...
+        ['average FR change BefRun/3-5s G/B'],...
+        ['Pyr_FRChangeBefRun-3to5GoodBadBox'],...
+        pathAnal,[-1 4],FRProfileMeanStatGoodBad.pRSPercChangeBefRunVs3to5All,colorSel);
+end
+
+function modPyr1 = accumPyr2(paths,filenames,mazeSess,autoCorrPyrAll,nNeuWithField,...
+            isNeuWithField,nNeuWithFieldAligned,isNeuWithFieldAligned,...
+            minFR,maxFR,task,sampleFq)
+    numRec = size(paths,1);
+    modPyr1 = struct('task',[],... % no cue - 1, AL - 2, PL - 3
+                              'taskBad',[],... % no cue - 1, AL - 2, PL - 3 Bad trials
+                              'indRec',[],... % recording index
+                              'indRecBad',[],... % recording index Bad trials
+                              'indNeu',[],... % neuron indices
+                              'indNeuBad',[],... % neuron indices  Bad trials
+                              ...
+                              'idxC1',[],...  % cluster no. Good trials
+                              'idxC1Bad',[],... % cluster no. for bad trials
+                              'idxC2',[],...  % cluster no. Good trials
+                              'idxC2Bad',[],... % cluster no. for bad trials
+                              'idxC3',[],...  % cluster no. Good trials
+                              'idxC3Bad',[],... % cluster no. for bad trials
+                              ...
+                              'relDepthNeuHDef',[],... % depth
+                              'nNeuWithField',[],... % number of neurons with fields
+                              'nNeuWithFieldAligned',[],... % number of neurons with fields after aligning to run onset
+                              'isNeuWithField',[],... % whether this neuron has a field
+                              'isNeuWithFieldAligned',[],... % whether this neuron has a field
+                              ...
+                              'timeStepRun',[],...
+                              'avgFRProfile',[],...% average firing rate profile good trials
+                              'avgFRProfileBad',[],... % average firing rate profile bad trials
+                              ...
+                              'nNeuPerRec',[],... % number of pyramidal neurons per recording
+                              'nNeuWithFieldPerRec',[],... % number of field for each recording
+                              'nNeuWithFieldAlignedPerRec',[],... % number of field for each recording after aligning to run onset
+                              'taskPerRec',[],...
+                              'indRecPerRec',[]);
+    
+    totExcNeu = 0;
+    for i = 1:numRec
+        fullPath = [paths(i,:) filenames(i,:) '.mat'];
+        if(exist(fullPath) == 0)
+            disp('File does not exist.');
+            return;
+        end
+        load(fullPath,'cluList'); 
+        
+        fileNameInfo = [filenames(i,:) '_Info.mat'];
+        fullPath = [paths(i,:) fileNameInfo];
+        if(exist(fullPath) == 0)
+            disp('_Info.mat file does not exist.');
+            return;
+        end
+        load(fullPath,'autoCorr','beh'); 
+        
+        fileNamePeakFR = [filenames(i,:) '_PeakFR_msess' num2str(mazeSess(i)) ...
+                        '_RunOnset0.mat'];
+        fullPath = [paths(i,:) fileNamePeakFR];
+        if(exist(fullPath) == 0)
+            disp(['The peak firing rate file does not exist. Please call ',...
+                    'function "PeakFiringRate_Aligned" first.']);
+            return;
+        end
+        load(fullPath,'pFRNonStimGoodStruct','pFRNonStimBadStruct');
+        
+        fileNameConv = [filenames(i,:) '_convSpikesAligned_msess' num2str(mazeSess(i)) '_BefRun0.mat'];
+        fullPath = [paths(i,:) fileNameConv];
+        if(exist(fullPath) == 0)
+            disp(['The convSpikesAligned file does not exist. Please call ',...
+                    'function "ConvSpikeTrain_AlignedRunOnset" first.']);
+            return;
+        end
+        load(fullPath,'timeStepRun');
+        
+        fullPathFR = [filenames(i,:) '_FR_Run1.mat'];
+        fullPath = [paths(i,:) fullPathFR];
+        if(exist(fullPath) == 0)
+            disp('_FR_Run.mat file does not exist.');
+            return;
+        end
+        load(fullPath,'mFRStruct','mFRStructSess'); 
+        if(length(beh.mazeSessAll) > 1)
+            mFR = mFRStructSess{mazeSess(i)};
+        else
+            mFR = mFRStruct;
+        end
+                
+        fileNameFW = [filenames(i,:) '_FieldSpCorr_GoodTr_Run1.mat'];
+        fullPath = [paths(i,:) fileNameFW];
+        if(exist(fullPath) == 0)
+            disp(['The field detection file does not exist. Please call ',...
+                    'function "FieldDetection_GoodTr" first.']);
+            return;
+        end
+        load(fullPath,'paramF'); 
+        
+        indNeu = mFR.mFR > minFR & mFR.mFR < maxFR &...
+                    autoCorr.isPyrneuron == 1;
+        
+        indTmp = find(autoCorrPyrAll.task == task & autoCorrPyrAll.indRec == i);
+        if(length(indTmp) ~= sum(indNeu))
+            disp(['the number of neurons in recording task = ' num2str(task) ' rec. no. = ' num2str(indRec)...
+                    'does not match that in the autoCorrPyrAll struct.']);
+        end
+        
+        if(length(pFRNonStimGoodStruct.indLapList) >= paramF.minNumTr)
+            modPyr1.taskPerRec(i) = task;
+            modPyr1.indRecPerRec(i) = i;            
+            modPyr1.task = [modPyr1.task task*ones(1,sum(indNeu))];
+            modPyr1.indRec = [modPyr1.indRec i*ones(1,sum(indNeu))];
+            modPyr1.indNeu = [modPyr1.indNeu find(indNeu == 1)]; 
+            modPyr1.avgFRProfile = [modPyr1.avgFRProfile; pFRNonStimGoodStruct.avgFRProfile(indNeu,:)];
+            if(length(indTmp) == sum(indNeu))
+                modPyr1.idxC1 = [modPyr1.idxC1 autoCorrPyrAll.idxC1(indTmp)'];
+                modPyr1.idxC2 = [modPyr1.idxC2 autoCorrPyrAll.idxC2(indTmp)'];
+                modPyr1.idxC3 = [modPyr1.idxC3 autoCorrPyrAll.idxC3(indTmp)];
+                modPyr1.relDepthNeuHDef = [modPyr1.relDepthNeuHDef autoCorrPyrAll.relDepthNeuHDef(indTmp)];
+                modPyr1.nNeuPerRec(i) = sum(indNeu == 1);
+                modPyr1.nNeuWithFieldPerRec(i) = unique(nNeuWithField(indTmp));
+                modPyr1.nNeuWithFieldAlignedPerRec(i) = unique(nNeuWithFieldAligned(indTmp));
+                modPyr1.nNeuWithField = [modPyr1.nNeuWithField nNeuWithField(indTmp)];
+                modPyr1.isNeuWithField = [modPyr1.isNeuWithField isNeuWithField(indTmp)];
+                modPyr1.nNeuWithFieldAligned = [modPyr1.nNeuWithFieldAligned nNeuWithFieldAligned(indTmp)];
+                modPyr1.isNeuWithFieldAligned = [modPyr1.isNeuWithFieldAligned isNeuWithFieldAligned(indTmp)];
+            end
+        else
+            disp([filenames(i,:) ' only has ' num2str(length(pFRNonStimGoodStruct.indLapList)) ...
+                ' good trials.']);
+            disp(['No. pyramidal neurons in this recording is ' num2str(sum(indNeu))]);
+        end
+        
+        if(~isempty(pFRNonStimBadStruct) && length(pFRNonStimBadStruct.indLapList) >= paramF.minNumTr)
+            modPyr1.taskBad = [modPyr1.taskBad task*ones(1,sum(indNeu))];
+            modPyr1.indRecBad = [modPyr1.indRecBad i*ones(1,sum(indNeu))];
+            modPyr1.indNeuBad = [modPyr1.indNeuBad find(indNeu == 1)]; 
+            modPyr1.avgFRProfileBad = [modPyr1.avgFRProfileBad; pFRNonStimBadStruct.avgFRProfile(indNeu,:)];
+            if(length(indTmp) == sum(indNeu))
+                modPyr1.idxC1Bad = [modPyr1.idxC1Bad autoCorrPyrAll.idxC1(indTmp)'];
+                modPyr1.idxC2Bad = [modPyr1.idxC2Bad autoCorrPyrAll.idxC2(indTmp)'];
+                modPyr1.idxC3Bad = [modPyr1.idxC3Bad autoCorrPyrAll.idxC3(indTmp)];
+            end
+        else
+            totExcNeu = totExcNeu + sum(indNeu);
+            if(isempty(pFRNonStimBadStruct))
+                lenTr = 0;
+            else
+                lenTr = length(pFRNonStimBadStruct.indLapList);
+            end
+            disp([filenames(i,:) ' only has ' num2str(lenTr) ' bad trials.']);
+            disp(['No. pyramidal neurons in this recording is ' num2str(sum(indNeu)) ...
+                ', total number of excluded neurons is ' num2str(totExcNeu)]);
+        end
+        modPyr1.timeStepRun = timeStepRun/sampleFq;
+        
+    end
+end
+
+function FRProfileMean = accumMean(avgFRProfile,timeStep)
+       
+    % baseline
+    indFRBaseline = find(timeStep >= -3 & timeStep < -2);
+    FRProfileMean.indFRBaseline = indFRBaseline;
+    FRProfileMean.meanAvgFRProfileBaseline =  mean(avgFRProfile(:,indFRBaseline),2);
+    
+    % -1.5- -0.5 sec
+    indFRBefRun = find(timeStep >= -1.5 & timeStep < -0.5);  
+    FRProfileMean.indFRBefRun = indFRBefRun;
+    FRProfileMean.meanAvgFRProfileBefRun = mean(avgFRProfile(:,indFRBefRun),2);
+    
+    % 0.5-1.5 sec
+    indFR0to1 = find(timeStep >= 0.5 & timeStep < 1.5);  
+    FRProfileMean.indFR0to1 = indFR0to1;
+    FRProfileMean.meanAvgFRProfile0to1 = mean(avgFRProfile(:,indFR0to1),2);
+    
+    % 3-5 sec
+    indFR3to5 = find(timeStep >= 3 & timeStep < 5);  
+    FRProfileMean.indFR3to5 = indFR3to5;
+    FRProfileMean.meanAvgFRProfile3to5 = mean(avgFRProfile(:,indFR3to5),2);
+    
+    % perc change from 0.5-1.5 s to baseline
+    FRProfileMean.percChange0to1VsBL = FRProfileMean.meanAvgFRProfile0to1...
+        ./FRProfileMean.meanAvgFRProfileBaseline;
+    
+    % perc change -1.5- -0.5 s to baseline
+    FRProfileMean.percChangeBefRunVsBL = FRProfileMean.meanAvgFRProfileBefRun...
+        ./FRProfileMean.meanAvgFRProfileBaseline;
+    
+    % perc change 0.5 to 1.5 s to -1.5- -0.5 s 
+    FRProfileMean.percChangeBefRunVs0to1 = FRProfileMean.meanAvgFRProfile0to1...
+        ./FRProfileMean.meanAvgFRProfileBefRun;
+    
+    % perc change from 0.5-1.5 s to 3-5s
+    FRProfileMean.percChange0to1Vs3to5 = FRProfileMean.meanAvgFRProfile0to1...
+        ./FRProfileMean.meanAvgFRProfile3to5;
+    
+    % perc change -1.5- -0.5 s to 3-5s
+    FRProfileMean.percChangeBefRunVs3to5 = FRProfileMean.meanAvgFRProfileBefRun...
+        ./FRProfileMean.meanAvgFRProfile3to5;
+end
+
+function FRProfileMeanStatC = accumMeanStatC(FRProfileMean,idxC,nNeuWithField,isNeuWithField)
+    
+    numC = max(idxC);
+    for i = 1:numC
+        idxCI = idxC == i;
+        
+        %% recordings with field vs without field
+        indCurCField = idxC == i & nNeuWithField >= 2;
+        indCurCNoField = idxC == i & nNeuWithField < 1;
+        FRProfileMeanStatC.pRS0to1VsBL(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(idxCI),...
+                    FRProfileMean.meanAvgFRProfile0to1(idxCI));
+        FRProfileMeanStatC.pRS0to1VsBLField(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile0to1(indCurCField));
+        FRProfileMeanStatC.pRS0to1VsBLNoField(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile0to1(indCurCNoField));        
+                            
+        FRProfileMeanStatC.pRSBefRunVsBL(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(idxCI),...
+                    FRProfileMean.meanAvgFRProfileBefRun(idxCI));
+        FRProfileMeanStatC.pRSBefRunVsBLField(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCField));
+        FRProfileMeanStatC.pRSBefRunVsBLNoField(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCNoField));
+                
+        FRProfileMeanStatC.pRS3to5VsBL(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(idxCI),...
+                    FRProfileMean.meanAvgFRProfile3to5(idxCI));
+        FRProfileMeanStatC.pRS3to5VsBLField(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCField));
+        FRProfileMeanStatC.pRS3to5VsBLNoField(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCNoField));
+                
+        FRProfileMeanStatC.pRSBefRunVs0to1(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(idxCI),...
+                    FRProfileMean.meanAvgFRProfileBefRun(idxCI));
+        FRProfileMeanStatC.pRSBefRunVs0to1Field(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCField));
+        FRProfileMeanStatC.pRSBefRunVs0to1NoField(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCNoField));
+                
+        FRProfileMeanStatC.pRS3to5Vs0to1(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(idxCI),...
+                    FRProfileMean.meanAvgFRProfile3to5(idxCI));
+        FRProfileMeanStatC.pRS3to5Vs0to1Field(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCField));
+        FRProfileMeanStatC.pRS3to5Vs0to1NoField(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCNoField));
+                
+        FRProfileMeanStatC.pRS3to5VsBefRun(i) = ranksum(FRProfileMean.meanAvgFRProfileBefRun(idxCI),...
+                    FRProfileMean.meanAvgFRProfile3to5(idxCI));
+        FRProfileMeanStatC.pRS3to5VsBefRunField(i) = ranksum(FRProfileMean.meanAvgFRProfileBefRun(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCField));
+        FRProfileMeanStatC.pRS3to5VsBefRunNoField(i) = ranksum(FRProfileMean.meanAvgFRProfileBefRun(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCNoField));
+                
+        FRProfileMeanStatC.pTTPercChange0to1VsBL(i) = ttest(FRProfileMean.percChange0to1VsBL(idxCI));
+        FRProfileMeanStatC.pRSPercChange0to1VsBLFieldVsNoField(i) = ...
+            ranksum(FRProfileMean.percChange0to1VsBL(indCurCField),...
+            FRProfileMean.percChange0to1VsBL(indCurCNoField));
+        
+        FRProfileMeanStatC.pTTPercChangeBefRunVsBL(i) = ttest(FRProfileMean.percChangeBefRunVsBL(idxCI));
+        FRProfileMeanStatC.pRSPercChangeBefRunVsBLFieldVsNoField(i) = ...
+            ranksum(FRProfileMean.percChangeBefRunVsBL(indCurCField),...
+            FRProfileMean.percChangeBefRunVsBL(indCurCNoField));
+        
+        FRProfileMeanStatC.pTTPercChangeBefRunVs0to1(i) = ttest(FRProfileMean.percChangeBefRunVs0to1(idxCI));
+        FRProfileMeanStatC.pRSPercChangeBefRunVs0to1FieldVsNoField(i) = ...
+            ranksum(FRProfileMean.percChangeBefRunVs0to1(indCurCField),...
+            FRProfileMean.percChangeBefRunVs0to1(indCurCNoField));
+        
+        FRProfileMeanStatC.pTTPercChange0to1Vs3to5(i) = ttest(FRProfileMean.percChange0to1Vs3to5(idxCI));
+        FRProfileMeanStatC.pRSPercChange0to1Vs3to5FieldVsNoField(i) = ...
+            ranksum(FRProfileMean.percChange0to1Vs3to5(indCurCField),...
+            FRProfileMean.percChange0to1Vs3to5(indCurCNoField));
+        
+        FRProfileMeanStatC.pTTPercChangeBefRunVs3to5(i) = ttest(FRProfileMean.percChangeBefRunVs3to5(idxCI));
+        FRProfileMeanStatC.pRSPercChangeBefRunVs3to5FieldVsNoField(i) = ...
+            ranksum(FRProfileMean.percChangeBefRunVs3to5(indCurCField),...
+            FRProfileMean.percChangeBefRunVs3to5(indCurCNoField));
+        
+        %% neurons with field vs without field
+        indCurCField = idxC == i & isNeuWithField == 1;
+        indCurCNoField = idxC == i & isNeuWithField == 0;
+        FRProfileMeanStatC.pRS0to1VsBLFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile0to1(indCurCField));
+        FRProfileMeanStatC.pRS0to1VsBLNoFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile0to1(indCurCNoField));        
+                            
+        FRProfileMeanStatC.pRSBefRunVsBLFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCField));
+        FRProfileMeanStatC.pRSBefRunVsBLNoFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCNoField));
+                
+        FRProfileMeanStatC.pRSBefRunVs0to1FieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCField));
+        FRProfileMeanStatC.pRSBefRunVs0to1NoFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfileBefRun(indCurCNoField));
+                
+        FRProfileMeanStatC.pRS3to5VsBLFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCField));
+        FRProfileMeanStatC.pRS3to5VsBLNoFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCNoField));
+                
+        FRProfileMeanStatC.pRS3to5Vs0to1FieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCField));
+        FRProfileMeanStatC.pRS3to5Vs0to1NoFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCNoField));
+                
+        FRProfileMeanStatC.pRS3to5VsBefRunFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBefRun(indCurCField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCField));
+        FRProfileMeanStatC.pRS3to5VsBefRunNoFieldNeu(i) = ranksum(FRProfileMean.meanAvgFRProfileBefRun(indCurCNoField),...
+                    FRProfileMean.meanAvgFRProfile3to5(indCurCNoField));
+                
+        FRProfileMeanStatC.pRSPercChange0to1VsBLFieldNeuVsNoFieldNeu(i) = ...
+            ranksum(FRProfileMean.percChange0to1VsBL(indCurCField),...
+            FRProfileMean.percChange0to1VsBL(indCurCNoField));
+        
+        FRProfileMeanStatC.pRSPercChangeBefRunVsBLFieldNeuVsNoFieldNeu(i) = ...
+            ranksum(FRProfileMean.percChangeBefRunVsBL(indCurCField),...
+            FRProfileMean.percChangeBefRunVsBL(indCurCNoField));
+        
+        FRProfileMeanStatC.pRSPercChangeBefRunVs0to1FieldNeuVsNoFieldNeu(i) = ...
+            ranksum(FRProfileMean.percChangeBefRunVs0to1(indCurCField),...
+            FRProfileMean.percChangeBefRunVs0to1(indCurCNoField));
+        
+        FRProfileMeanStatC.pRSPercChange0to1Vs3to5FieldNeuVsNoFieldNeu(i) = ...
+            ranksum(FRProfileMean.percChange0to1Vs3to5(indCurCField),...
+            FRProfileMean.percChange0to1Vs3to5(indCurCNoField));
+        
+        FRProfileMeanStatC.pRSPercChangeBefRunVs3to5FieldNeuVsNoFieldNeu(i) = ...
+            ranksum(FRProfileMean.percChangeBefRunVs3to5(indCurCField),...
+            FRProfileMean.percChangeBefRunVs3to5(indCurCNoField));
+    end
+end
+
+function FRProfileMeanStatC = accumMeanStatCCmp(FRProfileMean,idxC)
+    
+    idxC1 = idxC == 1;
+    idxC2 = idxC == 2;
+        
+    FRProfileMeanStatC.pRSPercChange0to1VsBLC = ...
+        ranksum(FRProfileMean.percChange0to1VsBL(idxC1),...
+        FRProfileMean.percChange0to1VsBL(idxC2));
+
+    FRProfileMeanStatC.pRSPercChangeBefRunVsBLC = ...
+        ranksum(FRProfileMean.percChangeBefRunVsBL(idxC1),...
+        FRProfileMean.percChangeBefRunVsBL(idxC2));
+    
+    FRProfileMeanStatC.pRSPercChangeBefRunVs0to1C = ...
+        ranksum(FRProfileMean.percChangeBefRunVs0to1(idxC1),...
+        FRProfileMean.percChangeBefRunVs0to1(idxC2));
+
+    FRProfileMeanStatC.pRSPercChange0to1Vs3to5C = ...
+        ranksum(FRProfileMean.percChange0to1Vs3to5(idxC1),...
+        FRProfileMean.percChange0to1Vs3to5(idxC2));
+
+    FRProfileMeanStatC.pRSPercChangeBefRunVs3to5C = ...
+        ranksum(FRProfileMean.percChangeBefRunVs3to5(idxC1),...
+        FRProfileMean.percChangeBefRunVs3to5(idxC2));
+
+end
+
+function FRProfileMeanStatC = accumMeanStatCGoodBad(FRProfileMean,FRProfileMeanBad,idxC,idxCBad)
+    
+    numC = max(idxC);
+    for i = 1:numC
+        idxCI = idxC == i;
+        idxCIBad = idxCBad == i;
+        FRProfileMeanStatC.pRSBL(i) = ranksum(FRProfileMean.meanAvgFRProfileBaseline(idxCI),...
+                    FRProfileMeanBad.meanAvgFRProfileBaseline(idxCIBad));
+                                
+        FRProfileMeanStatC.pRSBefRun(i) = ranksum(FRProfileMean.meanAvgFRProfileBefRun(idxCI),...
+                    FRProfileMeanBad.meanAvgFRProfileBefRun(idxCIBad));
+               
+        FRProfileMeanStatC.pRS3to5(i) = ranksum(FRProfileMean.meanAvgFRProfile3to5(idxCI),...
+                    FRProfileMeanBad.meanAvgFRProfile3to5(idxCIBad));
+               
+        FRProfileMeanStatC.pRS0to1(i) = ranksum(FRProfileMean.meanAvgFRProfile0to1(idxCI),...
+                    FRProfileMeanBad.meanAvgFRProfile0to1(idxCIBad));
+                
+        % perc change from 0.5-1.5 s to baseline
+        FRProfileMeanStatC.pRSPercChange0to1VsBL(i) = ranksum(FRProfileMean.percChange0to1VsBL(idxCI),...
+                    FRProfileMeanBad.percChange0to1VsBL(idxCIBad));
+
+        % perc change -1.5- -0.5 s to baseline
+        FRProfileMeanStatC.pRSPercChangeBefRunVsBL(i) = ranksum(FRProfileMean.percChangeBefRunVsBL(idxCI),...
+                    FRProfileMeanBad.percChangeBefRunVsBL(idxCIBad));
+
+        % perc change 0.5-1.5 s to -1.5- -0.5 s 
+        FRProfileMeanStatC.pRSPercChangeBefRunVs0to1(i) = ranksum(FRProfileMean.percChangeBefRunVs0to1(idxCI),...
+                    FRProfileMeanBad.percChangeBefRunVs0to1(idxCIBad));
+
+        % perc change from 0.5-1.5 s to 3-5s
+        FRProfileMeanStatC.pRSPercChange0to1Vs3to5(i) = ranksum(FRProfileMean.percChange0to1Vs3to5(idxCI),...
+                    FRProfileMeanBad.percChange0to1Vs3to5(idxCIBad));
+
+        % perc change -1.5- -0.5 s to 3-5s
+        FRProfileMeanStatC.pRSPercChangeBefRunVs3to5(i) = ranksum(FRProfileMean.percChangeBefRunVs3to5(idxCI),...
+                    FRProfileMeanBad.percChangeBefRunVs3to5(idxCIBad));
+        
+    end
+    
+    FRProfileMeanStatC.pRSBLAll = ranksum(FRProfileMean.meanAvgFRProfileBaseline,...
+                    FRProfileMeanBad.meanAvgFRProfileBaseline);
+                                
+    FRProfileMeanStatC.pRSBefRunAll = ranksum(FRProfileMean.meanAvgFRProfileBefRun,...
+                FRProfileMeanBad.meanAvgFRProfileBefRun);
+
+    FRProfileMeanStatC.pRS3to5All = ranksum(FRProfileMean.meanAvgFRProfile3to5,...
+                FRProfileMeanBad.meanAvgFRProfile3to5);
+
+    FRProfileMeanStatC.pRS0to1All = ranksum(FRProfileMean.meanAvgFRProfile0to1,...
+                FRProfileMeanBad.meanAvgFRProfile0to1);
+
+    % perc change from 0.5-1.5 s to baseline
+    FRProfileMeanStatC.pRSPercChange0to1VsBLAll = ranksum(FRProfileMean.percChange0to1VsBL,...
+                FRProfileMeanBad.percChange0to1VsBL);
+
+    % perc change -1.5- -0.5 s to baseline
+    FRProfileMeanStatC.pRSPercChangeBefRunVsBLAll = ranksum(FRProfileMean.percChangeBefRunVsBL,...
+                FRProfileMeanBad.percChangeBefRunVsBL);
+
+    % perc change 0.5-1.5 s to -1.5- -0.5 s 
+    FRProfileMeanStatC.pRSPercChangeBefRunVs0to1All = ranksum(FRProfileMean.percChangeBefRunVs0to1,...
+                FRProfileMeanBad.percChangeBefRunVs0to1);
+
+    % perc change from 0.5-1.5 s to 3-5s
+    FRProfileMeanStatC.pRSPercChange0to1Vs3to5All = ranksum(FRProfileMean.percChange0to1Vs3to5,...
+                FRProfileMeanBad.percChange0to1Vs3to5);
+
+    % perc change -1.5- -0.5 s to 3-5s
+    FRProfileMeanStatC.pRSPercChangeBefRunVs3to5All = ranksum(FRProfileMean.percChangeBefRunVs3to5,...
+                FRProfileMeanBad.percChangeBefRunVs3to5);
+end
+
+function plotBoxPlot(x1,x2,yl,fn,pathAnal,ylimit,p,colorSel)
+    [figNew,pos] = CreateFig();
+    set(0,'Units','pixels')
+    set(figure(figNew),'OuterPosition',...
+            [pos(1) pos(2) 200 400])
+    if(colorSel == 0)
+        colorArr = [163 207 98;...
+                234 131 114]/255;
+    elseif(colorSel == 1)            
+        colorArr = [234 131 114;...
+                116 53 61]/255;
+    else        
+        colorArr = [163 207 98;... 
+            63 79 37]/255;
+    end
+    x = [x1;x2];
+    g = [repmat({'C1'},length(x1),1);...
+        repmat({'C2'},length(x2),1)];
+    boxplot(x,g,'Notch','on','Widths',0.3,'Symbol','');
+    h = findobj(gca,'Tag','Box');
+    for j = 1:length(h)
+        patch(get(h(j),'XData'),get(h(j),'YData'),colorArr(j,:),'FaceAlpha',0.5);
+    end
+    if(~isempty(ylimit))
+        set(gca,'YLim',ylimit);
+    end
+    ylabel(yl);
+    title(['p = ' num2str(p)]);
+    
+    fileName1 = [pathAnal fn];
+    saveas(gcf,fileName1);
+    print('-painters', '-dpdf', fileName1, '-r600')
+end
+
+function plotAvgFRProfile(timeStepRun,avgFRProfile,yl,fileName,pathAnal,ylimit)
+    options.handle     = figure;
+    set(options.handle,'OuterPosition',...
+        [500 500 280 280])
+    options.color_area = [27 117 187]./255;    % Blue theme
+    options.color_line = [ 39 169 225]./255;
+    options.alpha      = 0.5;
+    options.line_width = 0.5;
+    options.error      = 'sem';
+    options.x_axis = timeStepRun;
+    plot_areaerrorbar(avgFRProfile,options);
+    hold on;
+    h = plot([0 0],[min(mean(avgFRProfile)-std(avgFRProfile)/sqrt(size(avgFRProfile,1)))*0.95 ...
+        max(mean(avgFRProfile)+std(avgFRProfile)/sqrt(size(avgFRProfile,1)))*1.05],'r-');
+    set(h,'LineWidth',1)
+    set(gca,'XLim',[timeStepRun(1) 7]);
+    if(~isempty(ylimit))
+        set(gca,'YLim',ylimit);
+    else
+        set(gca,'YLim',[min(mean(avgFRProfile)-std(avgFRProfile)/sqrt(size(avgFRProfile,1)))*0.95 ...
+        max(mean(avgFRProfile)+std(avgFRProfile)/sqrt(size(avgFRProfile,1)))*1.05]);
+    end
+    xlabel('Time (s)')
+    ylabel(yl)
+    
+    fileName1 = [pathAnal fileName];
+    saveas(gcf,fileName1);
+    print('-painters', '-dpdf', fileName1, '-r600')
+        
+end
+
+function plotAvgFRProfileCmp(timeStepRun,avgFRProfilex,avgFRProfiley, yl,fileName,pathAnal,ylimit)
+    options.handle     = figure;
+    set(options.handle,'OuterPosition',...
+        [500 500 280 280])
+    options.color_areaX = [27 117 187]./255;    % Blue theme
+    options.color_lineX = [ 39 169 225]./255;
+    options.color_areaY = [187 189 192]./255;    % Orange theme
+    options.color_lineY = [167 169  171]./255;
+    options.alpha      = 0.5;
+    options.line_width = 0.5;
+    options.error      = 'sem';
+    options.x_axisX = timeStepRun;
+    options.x_axisY = timeStepRun;
+    plot_areaerrorbarXY(avgFRProfilex, avgFRProfiley,...
+        options);
+    hold on;
+    minX = min(mean(avgFRProfilex)-std(avgFRProfilex)/sqrt(size(avgFRProfilex,1)));
+    minY = min(mean(avgFRProfiley)-std(avgFRProfiley)/sqrt(size(avgFRProfiley,1)));
+    maxX = max(mean(avgFRProfilex)+std(avgFRProfilex)/sqrt(size(avgFRProfilex,1)));
+    maxY = max(mean(avgFRProfiley)+std(avgFRProfiley)/sqrt(size(avgFRProfiley,1)));
+    if(~isempty(ylimit))
+        h = plot([0 0],ylimit,'r-');
+    else
+        h = plot([0 0],[min([minX minY])*0.95 ...
+            max([maxX maxY])*1.05],'r-');
+    end
+    set(h,'LineWidth',1)
+    set(gca,'XLim',[-1 4]);
+%     set(gca,'XLim',[timeStepRun(1) 7]);
+    if(~isempty(ylimit))
+        set(gca,'YLim',ylimit);
+    else
+        set(gca,'YLim',[min([minX minY])*0.95 ...
+        max([maxX maxY])*1.05]);
+    end
+    xlabel('Time (s)')
+    ylabel(yl)
+    
+    fileName1 = [pathAnal fileName];
+    saveas(gcf,fileName1);
+    print('-painters', '-dpdf', fileName1, '-r600')
+        
+end
+
+function plotBars(data1,data2,mean,std,x1,y1,t,pathAnal,fn)
+    fig = figure;
+    set(0,'Units','pixels') 
+    set(figure(fig),'OuterPosition',...
+        [500 500 210 280])
+    fig.Renderer = 'Painters';
+    
+    h = bar([1,2],mean,0.5);
+    set(h,'EdgeColor',[0.3 0.3 0.3],'FaceColor',[187 189 192]/255);
+    hold
+    
+    h = errorbar([1,2],mean,std);
+    set(h,'Marker','.','MarkerSize',0.1,'Color',[0 0 0],'LineStyle','none')
+    
+    h = plot(1+0.15*rand(1,length(data1)),data1,'o');
+    set(h,'MarkerSize',3,'Color',[167 169 171]/255);
+    
+    h = plot(2+0.15*rand(1,length(data2)),data2,'o');
+    set(h,'MarkerSize',3,'Color',[27 117 187]/255);
+    set(gca,'XLim',[0.5 2.5],'YLim',[0 max([data1 data2])+0.01]);
+    
+    xlabel(x1);
+    ylabel(y1);
+    title(t);
+    
+    fileName1 = [pathAnal fn];
+    saveas(gcf,fileName1);
+    print('-painters', '-dpdf', fileName1, '-r600')
+end

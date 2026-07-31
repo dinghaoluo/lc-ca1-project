@@ -1,0 +1,41 @@
+# Created on 24 April 2026
+# 512-pixel crop trial; batch size stays at two
+data:
+  manifest: data/imaging/fibre_sight/manifests/dlight_hpc_lc_opto_manifest.csv
+  train_split: train
+  val_split: val
+  patch_size: 512
+  patches_per_image: 8
+  val_patches_per_image: 1
+  foreground_fraction: 0.75
+  normalise_percentiles: [1, 99.7]
+  cache_images: true
+
+model:
+  in_channels: 1
+  out_channels: 1
+  base_channels: 32
+  depth: 4
+
+# This trial changed crop size and model width, so I left the baseline loss alone.
+loss:
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  run_name: dlight_hpc_lc_opto_unet_full512
+  out_dir: data/imaging/fibre_sight/runs
+  epochs: 120
+  batch_size: 2
+  learning_rate: 0.0002
+  weight_decay: 0.00001
+  num_workers: 0
+  pin_memory: true
+  amp: true
+  seed: 11
+  device: auto
+
+postprocess:
+  threshold: 0.5
+  min_size: 30
+  max_size:

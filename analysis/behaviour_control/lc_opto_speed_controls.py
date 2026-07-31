@@ -1,0 +1,339 @@
+# -*- coding: utf-8 -*-
+'''
+Created on Thu Jun 12 15:51:52 2025
+
+controls for LC run-onset peaks for opto
+
+@author: Dinghao Luo
+
+'''
+
+#%% imports
+from pathlib import Path
+import sys
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pickle
+from scipy.stats import sem, ttest_rel, wilcoxon
+
+repo_root = Path(__file__).resolve().parents[2]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+if str(repo_root / 'utils') not in sys.path:
+    sys.path.insert(0, str(repo_root / 'utils'))
+
+import rec_list
+paths = rec_list.pathLCopt
+
+from common_functions import mpl_formatting, smooth_convolve
+from console_formatting import print_session
+import project_paths as pp
+mpl_formatting()
+
+
+#%% parameters
+XAXIS_DIST = np.arange(2200) / 10  # in cm
+XAXIS_TIME = np.arange(4000) / 1000  # in s
+
+BEHAVIOUR_EXPERIMENT_STEM = pp.behaviour_experiment_stem('LC')
+OUTPUT_STEM = pp.LC_OPTO_EPHYS_FIGURES_STEM / 'opto_020_controls'
+
+
+#%% analysis
+OUTPUT_STEM.mkdir(parents=True, exist_ok=True)
+
+# containers
+all_mean_ctrl_speeds = []
+all_mean_stim_speeds = []
+
+all_mean_ctrl_speeds_time = []
+all_mean_stim_speeds_time = []
+
+for path in paths:
+    recname = path[-17:]
+    print_session(recname)
+
+    with open(
+            BEHAVIOUR_EXPERIMENT_STEM / f'{recname}.pkl',
+            'rb'
+            ) as f:
+        beh = pickle.load(f)
+
+    stim_conds = [t[15] for t in beh['trial_statements']][1:]
+    stim_idx = [trial for trial, cond in enumerate(stim_conds)
+                if cond!='0']
+    ctrl_idx = [trial + 2 for trial in stim_idx]
+    bad_idx = [trial for trial, bad in enumerate(beh['bad_trials'][1:])
+               if bad]
+
+    speed_trials = [[t for t in trial]
+                    for trial in beh['speed_distances_aligned'][1:]]
+
+    stim_speeds = [smooth_convolve(speeds, sigma=30) for trial, speeds
+                   in enumerate(speed_trials)
+                   if trial in stim_idx and trial not in bad_idx]
+    ctrl_speeds = [smooth_convolve(speeds, sigma=30) for trial, speeds
+                   in enumerate(speed_trials)
+                   if trial in ctrl_idx and trial not in bad_idx]
+
+    mean_stim_speeds = np.mean(stim_speeds, axis=0)
+    sem_stim_speeds = sem(stim_speeds, axis=0)
+    mean_ctrl_speeds = np.mean(ctrl_speeds, axis=0)
+    sem_ctrl_speeds = sem(ctrl_speeds, axis=0)
+
+    fig, ax = plt.subplots(figsize=(1.5,1.1))
+
+    ax.plot(XAXIS_DIST, mean_ctrl_speeds, c='grey')
+    ax.fill_between(XAXIS_DIST, mean_ctrl_speeds+sem_ctrl_speeds,
+                                mean_ctrl_speeds-sem_ctrl_speeds,
+                    color='grey', edgecolor='none', alpha=.25)
+
+    ax.plot(XAXIS_DIST, mean_stim_speeds, c='royalblue')
+    ax.fill_between(XAXIS_DIST, mean_stim_speeds+sem_stim_speeds,
+                                mean_stim_speeds-sem_stim_speeds,
+                    color='royalblue', edgecolor='none', alpha=.25)
+
+    ax.set(title=recname,
+           xlabel='distance (cm)', ylabel='velocity (cm·s$^{-1}$)',
+           xlim=(0, 200),
+           ylim=(0, max(max(mean_ctrl_speeds), max(mean_stim_speeds))+5))
+    for s in ['top', 'right']:
+        ax.spines[s].set_visible(False)
+
+    for ext in ['.png', '.pdf']:
+        fig.savefig(
+            OUTPUT_STEM / f'{recname}_speed_curves{ext}',
+            dpi=300,
+            bbox_inches='tight'
+            )
+    plt.close(fig)
+
+    stim_means = [np.mean(trial[:1800]) for trial in stim_speeds]
+    ctrl_means = [np.mean(trial[:1800]) for trial in ctrl_speeds]
+
+    fig, ax = plt.subplots(figsize=(2,1))
+
+    bp = ax.boxplot([ctrl_means, stim_means], vert=False, notch=True,
+                    widths=0.8, patch_artist=True)
+
+    for patch, color in zip(bp['boxes'], ['grey', 'royalblue']):
+        patch.set_facecolor(color)
+        patch.set_edgecolor('k')
+        patch.set_linewidth=1
+
+    for median in bp['medians']:
+        median.set_color('black')
+        median.set_linewidth(1.5)
+
+    ax.set(title=recname)
+
+    for ext in ['.png', '.pdf']:
+        fig.savefig(
+            OUTPUT_STEM / f'{recname}_mean_speeds{ext}',
+            dpi=300,
+            bbox_inches='tight'
+            )
+    plt.close(fig)
+
+    speed_time_trials = [[t[1] for t in trial]
+                         for trial in beh['speed_times_aligned'][1:]]
+
+    stim_speeds_time = [smooth_convolve(speeds[:4000], sigma=30) for trial, speeds
+                        in enumerate(speed_time_trials)
+                        if trial in stim_idx and trial not in bad_idx
+                        and len(speeds)>=4000]
+    ctrl_speeds_time = [smooth_convolve(speeds[:4000], sigma=30) for trial, speeds
+                        in enumerate(speed_time_trials)
+                        if trial in ctrl_idx and trial not in bad_idx
+                        and len(speeds)>=4000]
+
+    mean_stim_speeds_time = np.mean(stim_speeds_time, axis=0)
+    sem_stim_speeds_time = sem(stim_speeds_time, axis=0)
+    mean_ctrl_speeds_time = np.mean(ctrl_speeds_time, axis=0)
+    sem_ctrl_speeds_time = sem(ctrl_speeds_time, axis=0)
+
+    fig, ax = plt.subplots(figsize=(1.5,1.1))
+
+    ax.plot(XAXIS_TIME, mean_ctrl_speeds_time, c='grey')
+    ax.fill_between(XAXIS_TIME, mean_ctrl_speeds_time+sem_ctrl_speeds_time,
+                                mean_ctrl_speeds_time-sem_ctrl_speeds_time,
+                    color='grey', edgecolor='none', alpha=.25)
+
+    ax.plot(XAXIS_TIME, mean_stim_speeds_time, c='royalblue')
+    ax.fill_between(XAXIS_TIME, mean_stim_speeds_time+sem_stim_speeds_time,
+                                mean_stim_speeds_time-sem_stim_speeds_time,
+                    color='royalblue', edgecolor='none', alpha=.25)
+
+    ax.set(title=recname,
+           xlabel='time (s)', ylabel='velocity (cm·s$^{-1}$)',
+           xlim=(0, 4),
+           ylim=(0, max(max(mean_ctrl_speeds_time), max(mean_stim_speeds_time))+5))
+    for s in ['top', 'right']:
+        ax.spines[s].set_visible(False)
+
+    for ext in ['.png', '.pdf']:
+        fig.savefig(
+            OUTPUT_STEM / f'{recname}_speed_curves_time{ext}',
+            dpi=300,
+            bbox_inches='tight'
+            )
+    plt.close(fig)
+
+    # accumulate for across-session average (distance)
+    all_mean_ctrl_speeds.append(mean_ctrl_speeds)
+    all_mean_stim_speeds.append(mean_stim_speeds)
+
+    # accumulate for across-session average (time)
+    all_mean_ctrl_speeds_time.append(mean_ctrl_speeds_time)
+    all_mean_stim_speeds_time.append(mean_stim_speeds_time)
+
+
+#%% summary
+mean_ctrl = np.mean(all_mean_ctrl_speeds, axis=0)
+sem_ctrl = sem(all_mean_ctrl_speeds, axis=0)
+mean_stim = np.mean(all_mean_stim_speeds, axis=0)
+sem_stim = sem(all_mean_stim_speeds, axis=0)
+
+mean_ctrl_time = np.mean(all_mean_ctrl_speeds_time, axis=0)
+sem_ctrl_time = sem(all_mean_ctrl_speeds_time, axis=0)
+mean_stim_time = np.mean(all_mean_stim_speeds_time, axis=0)
+sem_stim_time = sem(all_mean_stim_speeds_time, axis=0)
+
+
+#%% aligned to dist
+ctrl_dist_scalar = np.nanmean(all_mean_ctrl_speeds, axis=1)
+stim_dist_scalar = np.nanmean(all_mean_stim_speeds, axis=1)
+
+# stats
+ctrl_mean = np.mean(ctrl_dist_scalar)
+ctrl_sem  = sem(ctrl_dist_scalar)
+ctrl_med  = np.median(ctrl_dist_scalar)
+ctrl_q25, ctrl_q75 = np.percentile(ctrl_dist_scalar, [25, 75])
+
+stim_mean = np.mean(stim_dist_scalar)
+stim_sem  = sem(stim_dist_scalar)
+stim_med  = np.median(stim_dist_scalar)
+stim_q25, stim_q75 = np.percentile(stim_dist_scalar, [25, 75])
+
+_, p_t = ttest_rel(ctrl_dist_scalar, stim_dist_scalar,
+                   nan_policy='omit')
+_, p_r = wilcoxon(ctrl_dist_scalar, stim_dist_scalar)
+
+p_t_str = f'{p_t:.2g}' if p_t < 0.01 else f'{p_t:.3f}'
+p_r_str = f'{p_r:.2g}' if p_r < 0.01 else f'{p_r:.3f}'
+
+fig, ax = plt.subplots(figsize=(1.65, 1.4))
+
+ax.plot(XAXIS_DIST, mean_ctrl, c='grey', label='control')
+ax.fill_between(XAXIS_DIST, mean_ctrl + sem_ctrl, mean_ctrl - sem_ctrl,
+                color='grey', alpha=.25, edgecolor='none')
+
+ax.plot(XAXIS_DIST, mean_stim, c='royalblue', label='stim')
+ax.fill_between(XAXIS_DIST, mean_stim + sem_stim, mean_stim - sem_stim,
+                color='royalblue', alpha=.25, edgecolor='none')
+
+stats_txt = (
+    f'mean speed (0–200 cm)\n'
+    f'ctrl: mean {ctrl_mean:.2f} ± {ctrl_sem:.2f}\n'
+    f'      med  {ctrl_med:.2f} [{ctrl_q25:.2f}, {ctrl_q75:.2f}]\n'
+    f'stim: mean {stim_mean:.2f} ± {stim_sem:.2f}\n'
+    f'      med  {stim_med:.2f} [{stim_q25:.2f}, {stim_q75:.2f}]\n'
+    f't-test p = {p_t_str}\n'
+    f'wilcoxon p = {p_r_str}'
+)
+
+ax.text(0.02, 0.98, stats_txt,
+        transform=ax.transAxes, ha='left', va='top', fontsize=6)
+
+ax.set(
+    xlabel='distance (cm)',
+    ylabel='speed (cm·s$^{-1}$)',
+    xlim=(0, 200),
+    ylim=(0, max(np.max(mean_ctrl + sem_ctrl),
+                 np.max(mean_stim + sem_stim)) + 5),
+    title='mean across sessions'
+)
+
+for s in ['top', 'right']:
+    ax.spines[s].set_visible(False)
+
+ax.legend(frameon=False)
+fig.tight_layout()
+
+for ext in ['.png', '.pdf']:
+    fig.savefig(
+        OUTPUT_STEM / f'mean_speed_curve_dist{ext}',
+        dpi=300, bbox_inches='tight'
+    )
+plt.close(fig)
+
+
+#%% aligned to time
+ctrl_time_scalar = np.nanmean(all_mean_ctrl_speeds_time, axis=1)
+stim_time_scalar = np.nanmean(all_mean_stim_speeds_time, axis=1)
+
+# stats
+ctrl_mean = np.mean(ctrl_time_scalar)
+ctrl_sem  = sem(ctrl_time_scalar)
+ctrl_med  = np.median(ctrl_time_scalar)
+ctrl_q25, ctrl_q75 = np.percentile(ctrl_time_scalar, [25, 75])
+
+stim_mean = np.mean(stim_time_scalar)
+stim_sem  = sem(stim_time_scalar)
+stim_med  = np.median(stim_time_scalar)
+stim_q25, stim_q75 = np.percentile(stim_time_scalar, [25, 75])
+
+_, p_t = ttest_rel(ctrl_time_scalar, stim_time_scalar,
+                   nan_policy='omit')
+_, p_r = wilcoxon(ctrl_time_scalar, stim_time_scalar)
+
+p_t_str = f'{p_t:.2g}' if p_t < 0.01 else f'{p_t:.3f}'
+p_r_str = f'{p_r:.2g}' if p_r < 0.01 else f'{p_r:.3f}'
+
+fig, ax = plt.subplots(figsize=(1.65, 1.4))
+
+ax.plot(XAXIS_TIME, mean_ctrl_time, c='grey', label='control')
+ax.fill_between(XAXIS_TIME, mean_ctrl_time + sem_ctrl_time,
+                mean_ctrl_time - sem_ctrl_time,
+                color='grey', alpha=.25, edgecolor='none')
+
+ax.plot(XAXIS_TIME, mean_stim_time, c='royalblue', label='stim')
+ax.fill_between(XAXIS_TIME, mean_stim_time + sem_stim_time,
+                mean_stim_time - sem_stim_time,
+                color='royalblue', alpha=.25, edgecolor='none')
+
+stats_txt = (
+    f'mean speed (0–4 s)\n'
+    f'ctrl: mean {ctrl_mean:.2f} ± {ctrl_sem:.2f}\n'
+    f'      med  {ctrl_med:.2f} [{ctrl_q25:.2f}, {ctrl_q75:.2f}]\n'
+    f'stim: mean {stim_mean:.2f} ± {stim_sem:.2f}\n'
+    f'      med  {stim_med:.2f} [{stim_q25:.2f}, {stim_q75:.2f}]\n'
+    f't-test p = {p_t_str}\n'
+    f'wilcoxon p = {p_r_str}'
+)
+
+ax.text(0.02, 0.98, stats_txt,
+        transform=ax.transAxes, ha='left', va='top', fontsize=6)
+
+ax.set(
+    xlabel='time from run onset (s)',
+    ylabel='speed (cm·s$^{-1}$)',
+    xlim=(0, 4),
+    ylim=(0, max(np.max(mean_ctrl_time + sem_ctrl_time),
+                 np.max(mean_stim_time + sem_stim_time)) + 5),
+    title='mean across sessions'
+)
+
+for s in ['top', 'right']:
+    ax.spines[s].set_visible(False)
+
+ax.legend(frameon=False)
+fig.tight_layout()
+
+for ext in ['.png', '.pdf']:
+    fig.savefig(
+        OUTPUT_STEM / f'mean_speed_curve_time{ext}',
+        dpi=300, bbox_inches='tight'
+    )
+plt.close(fig)

@@ -1,0 +1,41 @@
+# Created on 9 April 2026
+# baseline 256-pixel crop recipe kept after the first April model was working
+data:
+  manifest: data/imaging/fibre_sight/manifests/dlight_hpc_lc_opto_manifest.csv
+  train_split: train
+  val_split: val
+  patch_size: 256
+  patches_per_image: 24
+  val_patches_per_image: 8
+  foreground_fraction: 0.75
+  normalise_percentiles: [1, 99.7]
+  cache_images: true
+
+model:
+  in_channels: 1
+  out_channels: 1
+  base_channels: 24
+  depth: 4
+
+# BCE keeps false foreground costly; Dice stops the sparse fibre mask being treated as background.
+loss:
+  bce_weight: 1.0
+  dice_weight: 1.0
+
+train:
+  run_name: dlight_hpc_lc_opto_unet
+  out_dir: data/imaging/fibre_sight/runs
+  epochs: 80
+  batch_size: 8
+  learning_rate: 0.0003
+  weight_decay: 0.00001
+  num_workers: 0
+  pin_memory: true
+  amp: true
+  seed: 7
+  device: auto
+
+postprocess:
+  threshold: 0.5
+  min_size: 30
+  max_size:

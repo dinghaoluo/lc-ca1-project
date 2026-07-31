@@ -1,0 +1,202 @@
+function popSimilarityAllRecNoCue(onlyRun)
+% compare the spike train similarity for different alignment conditions over all the recordings 
+
+    GlobalConst;
+    intervalT = 20;
+    intervalD = 1800;
+    tc = 500; % ms
+    cost = 2/(tc/1000*sampleFq);
+    
+    thrCorrT = 0.03;
+    
+    RecordingList;
+    
+    popSimRunAll.CorrTGood = [];
+    popSimRunAll.CorrTBad = [];
+    popSimRunAll.CorrT = [];
+    popSimRunAll.CorrTRecNo = [];
+        
+    popSimRewAll.CorrTGood = [];
+    popSimRewAll.CorrTBad = [];
+    popSimRewAll.CorrT = [];
+    
+    popSimCueAll.CorrTGood = [];
+    popSimCueAll.CorrTBad = [];
+    popSimCueAll.CorrT = [];
+    for i = 1:size(listRecordingsNoCuePath,1)
+        path = listRecordingsNoCuePath(i,:);
+        fileName = listRecordingsNoCueFileName(i,:);
+        mazeSess = mazeSessionNoCue(i);
+        fullPath = [path,fileName '_meanPopCorrT_msess'  num2str(mazeSess) '_Run' num2str(onlyRun) '_intT' ...
+            num2str(intervalT) '.mat'];
+        load(fullPath,'meanPopCorrTRun','meanPopCorrTRew','meanPopCorrTCue');
+        
+        popSimRunAll.CorrTRecNo = [popSimRunAll.CorrTRecNo ...
+            i];
+        popSimRunAll.CorrTGood = [popSimRunAll.CorrTGood ...
+            meanPopCorrTRun.meanGood];
+        popSimRewAll.CorrTGood = [popSimRewAll.CorrTGood ...
+            meanPopCorrTRew.meanGood];
+        popSimCueAll.CorrTGood = [popSimCueAll.CorrTGood ...
+            meanPopCorrTCue.meanGood];
+        
+        popSimRunAll.CorrT = [popSimRunAll.CorrT ...
+            meanPopCorrTRun.mean];
+        popSimRewAll.CorrT = [popSimRewAll.CorrT ...
+            meanPopCorrTRew.mean];
+        popSimCueAll.CorrT = [popSimCueAll.CorrT ...
+            meanPopCorrTCue.mean];
+        
+        popSimRunAll.CorrTBad = [popSimRunAll.CorrTBad ...
+            meanPopCorrTRun.meanBad];
+        popSimRewAll.CorrTBad = [popSimRewAll.CorrTBad ...
+            meanPopCorrTRew.meanBad];
+        popSimCueAll.CorrTBad = [popSimCueAll.CorrTBad ...
+            meanPopCorrTCue.meanBad];
+        
+%         path = listRecordingsActiveLickPath(i,:);
+%         fileName = listRecordingsActiveLickFileName(i,:);
+%         fullPath = [path,fileName, '_meanSpikesCorrDistAligned_Run' num2str(onlyRun) '_intD' ...
+%             num2str(intervalT) '.mat'];
+%         load(fullPath,'meanCorrDistRun','meanCorrDistRew','meanCorrDistCue');
+%         
+%         indSelCorrT = selNeuronsCorrD(path,fileName,onlyRun,intervalT,thrCorrD,minFR);
+%         spikeSimRunAll.CorrTNeuSel = [spikeSimRunAll.CorrTNeuSel ...
+%             find(indSelCorrT == 1)];
+%         spikeSimRunAll.CorrTRecNo = [spikeSimRunAll.CorrTRecNo ...
+%             i*ones(1,sum(indSelCorrT))];
+%         spikeSimRunAll.CorrTNonZeroGood = [spikeSimRunAll.CorrTNonZeroGood ...
+%             meanCorrTRun.meanGoodNZ(indSelCorrT)];
+%         spikeSimRewAll.CorrTNonZeroGood = [spikeSimRewAll.CorrTNonZeroGood ...
+%             meanCorrTRew.meanGoodNZ(indSelCorrT)];
+%         spikeSimCueAll.CorrTNonZeroGood = [spikeSimCueAll.CorrTNonZeroGood ...
+%             meanCorrTCue.meanGoodNZ(indSelCorrT)];
+%         
+%         spikeSimRunAll.CorrTGood = [spikeSimRunAll.CorrTGood ...
+%             meanCorrTRun.meanGood(indSelCorrT)];
+%         spikeSimRewAll.CorrTGood = [spikeSimRewAll.CorrTGood ...
+%             meanCorrTRew.meanGood(indSelCorrT)];
+%         spikeSimCueAll.CorrTGood = [spikeSimCueAll.CorrTGood ...
+%             meanCorrTCue.meanGood(indSelCorrT)];
+    end
+    
+    popSimRunAll.meanCorrTGood = mean(popSimRunAll.CorrTGood);
+    popSimRewAll.meanCorrTGood = mean(popSimRewAll.CorrTGood);
+    popSimCueAll.meanCorrTGood = mean(popSimCueAll.CorrTGood);
+    
+    popSimRunAll.meanCorrTBad = mean(popSimRunAll.CorrTBad);
+    popSimRewAll.meanCorrTBad = mean(popSimRewAll.CorrTBad);
+    popSimCueAll.meanCorrTBad = mean(popSimCueAll.CorrTBad);
+    
+    popSimRunAll.meanCorrT = mean(popSimRunAll.CorrT);
+    popSimRewAll.meanCorrT = mean(popSimRewAll.CorrT);
+    popSimCueAll.meanCorrT = mean(popSimCueAll.CorrT);
+    
+    popSimRunAll.pRS_CorrTGood_RR = ranksum(popSimRunAll.CorrTGood,...
+        popSimRewAll.CorrTGood);
+    popSimRunAll.pRS_CorrTGood_RC = ranksum(popSimRunAll.CorrTGood,...
+        popSimCueAll.CorrTGood);
+    popSimRunAll.pRS_CorrTGood_CR = ranksum(popSimRewAll.CorrTGood,...
+        popSimCueAll.CorrTGood);
+    
+    popSimRunAll.pRS_CorrTBad_RR = ranksum(popSimRunAll.CorrTBad,...
+        popSimRewAll.CorrTBad);
+    popSimRunAll.pRS_CorrTBad_RC = ranksum(popSimRunAll.CorrTBad,...
+        popSimCueAll.CorrTBad);
+    popSimRunAll.pRS_CorrTBad_CR = ranksum(popSimRewAll.CorrTBad,...
+        popSimCueAll.CorrTBad);
+    
+    popSimRunAll.pRS_CorrT_RR = ranksum(popSimRunAll.CorrT,...
+        popSimRewAll.CorrT);
+    popSimRunAll.pRS_CorrT_RC = ranksum(popSimRunAll.CorrT,...
+        popSimCueAll.CorrT);
+    popSimRunAll.pRS_CorrT_CR = ranksum(popSimRewAll.CorrT,...
+        popSimCueAll.CorrT);
+        
+    save('Z:\Yingxue\DataAnalysisRaphi\PopCorrTAlignedNoCue_AllRec_Stat.mat',...
+        'popSimRunAll','popSimRewAll','popSimCueAll');
+    
+    plotSimComp(popSimRunAll.CorrTGood,...
+        popSimCueAll.CorrTGood,...
+        popSimRewAll.CorrTGood,...
+        popSimRunAll.meanCorrTGood,...
+        popSimCueAll.meanCorrTGood,...
+        popSimRewAll.meanCorrTGood,...
+        popSimRunAll.pRS_CorrTGood_RC,...
+        popSimRunAll.pRS_CorrTGood_RR,...
+        popSimRunAll.pRS_CorrTGood_CR,...
+        'Pop. corr. good tr.',0.45);
+    fileName1 = ['PopCorrTAlignedNoCue_Good_RunVsCueVsRew_AllRec'];
+    print('-painters','-dpdf',['Z:\Yingxue\DataAnalysisRaphi\' fileName1],'-r600');
+    
+     plotSimComp(popSimRunAll.CorrTBad,...
+        popSimCueAll.CorrTBad,...
+        popSimRewAll.CorrTBad,...
+        popSimRunAll.meanCorrTBad,...
+        popSimCueAll.meanCorrTBad,...
+        popSimRewAll.meanCorrTBad,...
+        popSimRunAll.pRS_CorrTBad_RC,...
+        popSimRunAll.pRS_CorrTBad_RR,...
+        popSimRunAll.pRS_CorrTBad_CR,...
+        'Pop. corr. bad tr.',0.45);
+    fileName1 = ['PopCorrTAlignedNoCue_Bad_RunVsCueVsRew_AllRec'];
+    print('-painters','-dpdf',['Z:\Yingxue\DataAnalysisRaphi\' fileName1],'-r600');
+    
+    plotSimComp(popSimRunAll.CorrT,...
+        popSimCueAll.CorrT,...
+        popSimRewAll.CorrT,...
+        popSimRunAll.meanCorrT,...
+        popSimCueAll.meanCorrT,...
+        popSimRewAll.meanCorrT,...
+        popSimRunAll.pRS_CorrT_RC,...
+        popSimRunAll.pRS_CorrT_RR,...
+        popSimRunAll.pRS_CorrT_CR,...
+        'Pop. corr.',0.45);
+    fileName1 = ['PopCorrTAlignedNoCue_All_RunVsCueVsRew_AllRec'];
+    print('-painters','-dpdf',['Z:\Yingxue\DataAnalysisRaphi\' fileName1],'-r600');
+    
+end
+
+function plotSimComp(x,y,z,xm,ym,zm,pxy,pxz,pyz,yl,maxXY)
+    [figNew,pos] = CreateFig();
+    set(0,'Units','pixels')
+    set(figure(figNew),'OuterPosition',...
+            [pos(1) pos(2) 280 280])
+
+    h = bar([1 2 3],[xm,ym,zm]);
+    set(h,'FaceColor',[0.7 0.7 0.9],'EdgeColor',[0.5 0.5 0.5]);
+    if(isempty(maxXY))
+        maxXY = max([x,y z]);
+    end
+    hold on;
+    h = plot(ones(1,length(x)),x,'k.');
+    set(h,'MarkerSize',11);
+    h = plot(2*ones(1,length(y)),y,'k.');
+    set(h,'MarkerSize',11);
+    h = plot(3*ones(1,length(z)),z,'k.');
+    set(h,'MarkerSize',11);
+    set(gca,'YLim',[0 maxXY]);
+    title(['p12 = ' num2str(pxy) ' p13 = ' num2str(pxz) ' p23 = ' num2str(pyz)]);
+    ylabel(yl)
+end
+
+function plotSimCompxy(x,y,xm,ym,pxy,yl,maxXY)
+    [figNew,pos] = CreateFig();
+    set(0,'Units','pixels')
+    set(figure(figNew),'OuterPosition',...
+            [pos(1) pos(2) 280 280])
+
+    h = bar([1 2],[xm,ym]);
+    set(h,'FaceColor',[0.7 0.7 0.9],'EdgeColor',[0.5 0.5 0.5]);
+    if(isempty(maxXY))
+        maxXY = max([x,y]);
+    end
+    hold on;
+    h = plot(ones(1,length(x)),x,'k.');
+    set(h,'MarkerSize',11);
+    h = plot(2*ones(1,length(y)),y,'k.');
+    set(h,'MarkerSize',11);
+    set(gca,'YLim',[0 maxXY]);
+    title(['p12 = ' num2str(pxy) ]);
+    ylabel(yl)
+end
