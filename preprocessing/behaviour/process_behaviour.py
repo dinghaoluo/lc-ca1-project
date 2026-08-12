@@ -212,7 +212,11 @@ def main(argv=None):
                 )
 
             session_start = time()
-            behavioural_data = spec['processor'](str(txt_path))
+            try:
+                behavioural_data = spec['processor'](str(txt_path))
+            except (ValueError, FileNotFoundError) as e:
+                print(f'  skipped ({e})')
+                continue
             print(
                 'session finished '
                 f'({timedelta(seconds=int(time() - session_start))})'
