@@ -1,8 +1,8 @@
 # LC-CA1 project
 
-This repository contains the working code for my projects on the locus coeruleus (LC) and hippocampal CA1: behaviour, electrophysiology, two-photon imaging, optogenetics, pharmacology, and modelling. It is a reorganised and cleaned-up version of [`code-mpfi-dinghao`](https://github.com/dinghaoluo/code-mpfi-dinghao); the older repository remains online in its original, unorganised form.
+This repository contains the working code for my projects on the locus coeruleus (LC) and hippocampal CA1, including scripts for processing behaviour, electrophysiology, two-photon imaging, optogenetics, and pharmacology data, as well as for modelling. It is the reorganised public version of a `code-mpfi-dinghao` repository, and those historical laboratory scripts with hard-coded lab drive paths are private but are available upon reasonable request.
 
-Raw recordings remain on MPFI storage. Several input paths therefore point to `Z:/Dinghao/...`, and some older scripts retain lab-specific conventions. The main paths are collected in `utils/project_paths.py`. Generated data, figures, and logs are kept under `data/`, `figures/`, and `outputs/`; all three directories are ignored by Git.
+Raw recordings remain on the network drive of Max Planck Florida Institute for Neuroscience. The main paths, often pointing to directories on the MPFI network drive, are collected in `utils/project_paths.py`, and the data will be uploaded into a public repository upon the publication of my manuscript. Should one wish to reproduce the analyses with those data, the generated outputs, figures, and logs will be stored under `data/`, `figures/`, and `outputs/`; all three directories are ignored by Git so that reproduction can be performed locally.
 
 ## repository layout
 
