@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
 '''
 Created on Mar 31 2026
+Updated on Aug 28 2026
 
 LC-DA-CA1 model; generates figure 6 panels in
 'figures/fig_6_lc_da_ca1_model/'
@@ -99,6 +99,8 @@ class Params:
     frac_da_targ: float = 0.30
     da_half_rate: float = 2.10
     da_rate_slope: float = 0.08
+    da_gain_mode: str = 'activity_dependent'
+    da_fixed_gain: float = 0.50
     wDA_global: float = 0.00
     da_block_scale: float = 0.40
 
@@ -265,7 +267,12 @@ def simulate_population_condition(
     rate_prev = np.clip(softplus(x_no_da[:, 0], p.softplus_beta), 0.0, p.max_rate)
 
     for k_idx in range(n_t):
-        wDA_extra = sigmoid(rate_prev, p.da_half_rate, p.da_rate_slope)
+        if p.da_gain_mode == 'activity_dependent':
+            wDA_extra = sigmoid(rate_prev, p.da_half_rate, p.da_rate_slope)
+        elif p.da_gain_mode == 'fixed':
+            wDA_extra = np.full(n_cells, p.da_fixed_gain, dtype=float)
+        else:
+            raise ValueError(f'Unknown DA gain mode: {p.da_gain_mode}')
         wDA_t = p.wDA_global + pop['da_targ_strength'] * wDA_extra
         da_term = da_scale * wDA_t * drives['D'][k_idx]
         state_target = x_no_da[:, k_idx] + da_term
@@ -825,7 +832,12 @@ def plot_overview(result: dict[str, Any], summary: dict[str, float | str], outpu
     drives = result['drives']
 
     r_grid = np.linspace(0.0, 8.0, 300)
-    da_gate = sigmoid(r_grid, p.da_half_rate, p.da_rate_slope)
+    if p.da_gain_mode == 'activity_dependent':
+        da_gate = sigmoid(r_grid, p.da_half_rate, p.da_rate_slope)
+        da_gate_title = 'Activity-dependent targeted DA weight'
+    else:
+        da_gate = np.full_like(r_grid, p.da_fixed_gain)
+        da_gate_title = 'Activity-independent targeted DA weight'
 
     fig = plt.figure(figsize=(7.4, 7.2), constrained_layout=True)
     fig.set_facecolor('white')
@@ -848,12 +860,13 @@ def plot_overview(result: dict[str, Any], summary: dict[str, float | str], outpu
 
     ax = fig.add_subplot(gs[0, 1])
     ax.plot(r_grid, da_gate, color=DARKGREEN, linewidth=2.4)
-    ax.axvline(p.da_half_rate, linestyle='--', color='0.55', linewidth=1)
+    if p.da_gain_mode == 'activity_dependent':
+        ax.axvline(p.da_half_rate, linestyle='--', color='0.55', linewidth=1)
     ax.set_xlim([0.0, 4.0])
     ax.set_ylim([0.0, 1.05])
     ax.set_xlabel('Previous firing rate (Hz)')
     ax.set_ylabel('Extra DA weight')
-    ax.set_title('Activity-dependent targeted DA weight')
+    ax.set_title(da_gate_title)
     clean_axis(ax)
 
     ax = fig.add_subplot(gs[1, 0])
