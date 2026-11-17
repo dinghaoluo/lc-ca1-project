@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 '''
-Created on 29 June 2026
+Created on Wed Jul 29 23:41:17 2026
 
 project path stems for the LC-CA1 repository
-
-Raw recording roots can still point to lab storage, while generated data and
-figures resolve inside this repository. Edit the raw-input roots below when
-using downloaded data outside the MPFI network-drive layout.
 
 @author: Dinghao Luo
 '''
@@ -183,3 +179,22 @@ def resolve_matlab_pipeline_file(raw_file, recname):
         return fallback_file
 
     return raw_file
+
+EM_SYNAPSE_COORDINATES_ROOT = Path('Z:/EM-DATA/Annotations of profiles/Synapses center coordinates')
+
+MICEEXP_ANMD152_A152_20251020_02T_TXT_PATH = Path('Z:/Dinghao/MiceExp/ANMD152/A152-20251020-02T.txt')
+
+MICEEXP_ANMD171_A171_20260220_01T_TXT_PATH = Path('Z:/Dinghao/MiceExp/ANMD171/A171-20260220-01T.txt')
+
+JINGYU_CODE_ROOT = Path('Z:/Jingyu/code_mpfi_Jingyu')
+
+DBH_DLIGHT_RAW_ROOT = Path('Z:/Jingyu/LC_HPC_manuscript/raw_data/Dbh_dlight')
+
+NLIGHT_RAW_ROOT = Path('Z:/Jingyu/raw_data/nlight')
+
+EM_PROFILES_ORIGINAL_ROOT = Path('Z:/EM-DATA/Annotations of profiles/new exports from Dragonfly 6-16-2026')
+
+EM_PROFILES_REVISED_ROOT = Path('Z:/EM-DATA/Annotations of profiles/new revised profile 3 and 4')
+
+DLIGHT_HOTSPOTS_OUTPUT_ROOT = OUTPUT_ROOT / 'da_hotspots'
+DLIGHT_HOTSPOTS_FIGURE_ROOT = FIGURES_ROOT / 'dlight_hotspots'
