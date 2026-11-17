@@ -190,6 +190,7 @@ def plot_violin_with_scatter(data0, data1, colour0, colour1,
                              title=' ', stats_labels=None,
                              showscatter=False, showmainline=True,
                              print_statistics=False, plot_statistics=True,
+                             show_summary=True, ax=None,
                              save=False, savepath=' ', dpi=300,
                              figsize=(1.8, 2.2), show=True, close=False):
     '''
@@ -249,7 +250,11 @@ def plot_violin_with_scatter(data0, data1, colour0, colour1,
     label0 = str(stats_labels[0])
     label1 = str(stats_labels[1])
 
-    fig, ax = plt.subplots(figsize=figsize)
+    owns_figure = ax is None
+    if owns_figure:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
 
     vp = ax.violinplot(
         [data0, data1],
@@ -297,28 +302,29 @@ def plot_violin_with_scatter(data0, data1, colour0, colour1,
     y_span = y_max - y_min
     y_offset = (ylim[1] - ylim[0]) * 0.05 if ylim else 0.05 * y_span
 
-    ax.text(
-        1.1,
-        y_max + y_offset,
-        f'Med = {med0:.2f}\n'
-        f'IQR = [{q25_0:.2f}, {q75_0:.2f}]\n'
-        f'{mean0:.2f} +/- {sem0:.2f}',
-        ha='center',
-        va='bottom',
-        fontsize=7,
-        color=colour0,
-    )
-    ax.text(
-        1.9,
-        y_max + y_offset,
-        f'Med = {med1:.2f}\n'
-        f'IQR = [{q25_1:.2f}, {q75_1:.2f}]\n'
-        f'{mean1:.2f} +/- {sem1:.2f}',
-        ha='center',
-        va='bottom',
-        fontsize=7,
-        color=colour1,
-    )
+    if show_summary:
+        ax.text(
+            1.1,
+            y_max + y_offset,
+            f'Med = {med0:.2f}\n'
+            f'IQR = [{q25_0:.2f}, {q75_0:.2f}]\n'
+            f'{mean0:.2f} +/- {sem0:.2f}',
+            ha='center',
+            va='bottom',
+            fontsize=7,
+            color=colour0,
+        )
+        ax.text(
+            1.9,
+            y_max + y_offset,
+            f'Med = {med1:.2f}\n'
+            f'IQR = [{q25_1:.2f}, {q75_1:.2f}]\n'
+            f'{mean1:.2f} +/- {sem1:.2f}',
+            ha='center',
+            va='bottom',
+            fontsize=7,
+            color=colour1,
+        )
 
     ax.set(xlim=(.5, 2.5))
 
@@ -393,7 +399,8 @@ def plot_violin_with_scatter(data0, data1, colour0, colour1,
     for spine in ['top', 'right', 'bottom']:
         ax.spines[spine].set_visible(False)
 
-    fig.tight_layout()
+    if owns_figure:
+        fig.tight_layout()
     plt.grid(False)
 
     if save:
@@ -405,3 +412,5 @@ def plot_violin_with_scatter(data0, data1, colour0, colour1,
 
     if close:
         plt.close(fig)
+
+    return fig, ax
