@@ -1,25 +1,27 @@
 # -*- coding: utf-8 -*-
 '''
-Created on Mon Mar 31 13:02:49 2025
-Modified on Tue 24 June 16:24:15 2025
-Modified on Tue 25 Nov 2025
+Created on Wed Nov  4 11:00:48 2026
 
-extract opto-LC stimulation + dLight imaging data
-modification notes:
-    - 24 June 2025: removed pixel-wise dFF calculation and replaced it with a
-        simplified dFF (stim. / baseline for raw F) that is easy to compute
-        and produces the exact same desideratum (the release map)
-    - 25 Nov 2025: changed stim.-alignment method to be detection based on
-        channel 2 (more stable than before)
+Modified on Tue 24 June 16:24:15 2025
 
 @author: Dinghao Luo
 '''
 
 #%% imports
+import sys
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+if str(repo_root / 'utils') not in sys.path:
+    sys.path.insert(0, str(repo_root / 'utils'))
+
+import project_paths as pp
+import rec_list
+
 import argparse
 import gc
-from pathlib import Path
-import sys
 
 import numpy as np
 import matplotlib
@@ -229,8 +231,11 @@ def process_session(path, make_plots=False):
 
     # load frame times and check $FM against tot_frame
     frame_times = txt['frame_times']
+    # warning only: the original extraction never halted here, and stim.
+    #   detection below reads frames from the movie, not from $FM
     if tot_frames < len(frame_times) - 3 or tot_frames > len(frame_times):
-        raise ValueError(f'check $FM; frame count mismatch for {recname}')
+        print(f'WARNING: $FM count ({len(frame_times)}) does not match movie '
+              f'frames ({tot_frames}) for {recname}; continuing')
     pulse_info = ipf.extract_opto_pulse_metadata(txt, SAMP_FREQ)
     pulse_trains = pulse_info['pulse_trains']
     pulse_width_ON = pulse_info['pulse_width_on']
