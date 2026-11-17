@@ -1,28 +1,22 @@
 # -*- coding: utf-8 -*-
 '''
-Created on Wed Aug 14 18:22:04 2024
+Created on Wed Jul 29 22:13:02 2026
 
 Modified on Fri Apr 10 2026
-
-plotting functions to save us from the chaos of having to code out the plotting
-    section again and again without salvation which has been extremely painful
-    and i do not understand why i did not do this earlier
 
 @author: Dinghao Luo
 '''
 
 #%% imports
+
 import matplotlib.pyplot as plt
+from common_functions import mpl_formatting
 import numpy as np
-import sys
 from scipy.stats import ranksums, sem, ttest_ind, ttest_rel, wilcoxon
 
 
 #%% plotting helpers
 def add_scale_bar(ax, x_start, y_start, x_len, y_len, color='k', lw=2):
-    '''
-    add horizontal and vertical scale bars to an existing axis.
-    '''
     # horizontal scale bar (time)
     ax.plot([x_start, x_start + x_len], [y_start, y_start], color=color, lw=lw, solid_capstyle='butt')
     # vertical scale bar (dF/F)
@@ -33,28 +27,6 @@ def plot_bar_with_paired_scatter(
         title='', ylabel='% cells', xticklabels=('ctrl.', 'stim.'),
         ylim=None
         ):
-    '''
-    plot paired bar means with sem, individual paired scatter points,
-    and paired statistical comparisons.
-
-    parameters:
-    - ax: matplotlib axis
-        axis to draw the plot on
-    - ctrl_vals: array-like
-        control condition values (paired with stim_vals)
-    - stim_vals: array-like
-        stimulation condition values
-    - colors: tuple
-        colours for control and stimulation bars
-    - title: str
-        plot title
-    - ylabel: str
-        y-axis label
-    - xticklabels: tuple
-        x-axis category labels
-    - ylim: tuple or none
-        y-axis limits
-    '''
 
     def annotate(axis, x1, x2, y, text, yrange):
         bump = 0.01 * yrange
@@ -122,27 +94,6 @@ def plot_bar_with_paired_scatter(
 def plot_box_with_scatter(ctrl_data, stim_data, xlabel, savepath,
                           title='', show_scatter=True,
                           ctrl_color='grey', stim_color='royalblue'):
-    '''
-    plot horizontal boxplots with optional scatter overlay.
-
-    parameters:
-    - ctrl_data: array-like
-        control condition values
-    - stim_data: array-like
-        stimulation condition values
-    - xlabel: str
-        x-axis label
-    - savepath: str
-        file path (without extension) for saving
-    - title: str
-        plot title
-    - show_scatter: bool
-        whether to overlay individual data points
-    - ctrl_color: str or tuple
-        colour for control box
-    - stim_color: str or tuple
-        colour for stimulation box
-    '''
     ctrl_data = np.asarray(ctrl_data)
     stim_data = np.asarray(stim_data)
 
@@ -193,56 +144,6 @@ def plot_violin_with_scatter(data0, data1, colour0, colour1,
                              show_summary=True, ax=None,
                              save=False, savepath=' ', dpi=300,
                              figsize=(1.8, 2.2), show=True, close=False):
-    '''
-    plot half-violins with optional scatter and statistical comparisons.
-
-    parameters
-    ----------
-    data0 : array-like
-        values for the first dataset (plotted at x=1)
-    data1 : array-like
-        values for the second dataset (plotted at x=2)
-    colour0 : str or tuple
-        colour for the first dataset
-    colour1 : str or tuple
-        colour for the second dataset
-    paired : bool, optional
-        if true, use paired statistical tests; otherwise, use unpaired tests (default: True)
-    alpha : float, optional
-        transparency level for scatter points and lines (default: 0.25)
-    xticklabels : tuple, optional
-        labels for the x-axis ticks (default: ('data0', 'data1'))
-    ylabel : str, optional
-        label for the y-axis (default: ' ')
-    ylim : tuple, optional
-        limits for the y-axis (default: None)
-    title : str, optional
-        title for the plot (default: ' ')
-    showscatter : bool, optional
-        if true, scatter individual data points on the plot (default: False)
-    showmainline : bool, optional
-        if true, draw a line connecting median values (default: True)
-    print_statistics : bool, optional
-        if true, print statistical results in the console (default: False)
-    plot_statistics : bool, optional
-        if true, display statistical results on the plot (default: True)
-    save : bool, optional
-        if true, save the plot as a .png and .pdf file (default: False)
-    savepath : str, optional
-        path to save the plot (default: ' ')
-    dpi : int, optional
-        resolution for the saved image (default: 300)
-    figsize : tuple, optional
-        figure size (default: (1.8, 2.2))
-    show : bool, optional
-        if true, display the figure interactively (default: True)
-    close : bool, optional
-        if true, close the figure before returning (default: False)
-
-    returns
-    -------
-    none
-    '''
     data0 = np.asarray(data0)
     data1 = np.asarray(data1)
 
