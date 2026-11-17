@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 '''
-Created on Thu Jun 25 2026
+Created on Wed Jul 29 22:44:43 2026
 
 compare dopamine and norepinephrine roi-versus-neuropil time courses
 
@@ -8,9 +8,19 @@ compare dopamine and norepinephrine roi-versus-neuropil time courses
 '''
 
 #%% imports
-from pathlib import Path
-import csv
 import sys
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+if str(repo_root / 'utils') not in sys.path:
+    sys.path.insert(0, str(repo_root / 'utils'))
+
+import project_paths as pp
+import rec_list
+
+import csv
 
 import numpy as np
 from scipy.ndimage import binary_dilation
@@ -165,132 +175,137 @@ def plot_tau_violin(ax, rows, key):
 
 
 #%% main
-all_rows = []
+def main():
+    all_rows = []
 
-for dataset in DATASETS:
-    all_sess_stem = dataset['stem'] / 'all_sessions'
+    for dataset in DATASETS:
+        all_sess_stem = dataset['stem'] / 'all_sessions'
 
-    for path in dataset['paths']:
-        recname = Path(path).name
-        print_session(f'{dataset["sensor"]}: {recname}')
-        proc_path = all_sess_stem / recname / 'processed_data'
+        for path in dataset['paths']:
+            recname = Path(path).name
+            print_session(f'{dataset["sensor"]}: {recname}')
+            proc_path = all_sess_stem / recname / 'processed_data'
 
-        ref_ch1_path = proc_path / 'ref_mat_ch1.npy'
-        pixel_RI_path = proc_path / f'{recname}_pixel_RI_bins.npy'
-        pixel_RI2_path = proc_path / f'{recname}_pixel_RI2_bins.npy'
-        pixel_RI_stim_path = proc_path / f'{recname}_pixel_RI_stim.npy'
-        roi_path = proc_path / f'{recname}_ROI_dict.npy'
+            ref_ch1_path = proc_path / 'ref_mat_ch1.npy'
+            pixel_RI_path = proc_path / f'{recname}_pixel_RI_bins.npy'
+            pixel_RI2_path = proc_path / f'{recname}_pixel_RI2_bins.npy'
+            pixel_RI_stim_path = proc_path / f'{recname}_pixel_RI_stim.npy'
+            roi_path = proc_path / f'{recname}_ROI_dict.npy'
 
-        pixel_RI_bins = np.load(pixel_RI_path, allow_pickle=True)
-        pixel_RI2_bins = np.load(pixel_RI2_path, allow_pickle=True)
-        pixel_RI_stim = np.load(pixel_RI_stim_path, allow_pickle=True)
-        roi_dict = np.load(roi_path, allow_pickle=True).item()
-        ref_ch1 = np.load(ref_ch1_path, allow_pickle=True)
+            pixel_RI_bins = np.load(pixel_RI_path, allow_pickle=True)
+            pixel_RI2_bins = np.load(pixel_RI2_path, allow_pickle=True)
+            pixel_RI_stim = np.load(pixel_RI_stim_path, allow_pickle=True)
+            roi_dict = np.load(roi_path, allow_pickle=True).item()
+            ref_ch1 = np.load(ref_ch1_path, allow_pickle=True)
 
-        releasing = iuf.identify_releasing_rois(pixel_RI_stim, roi_dict, alpha=ALPHA, min_ri=MIN_RI)
-        if len(releasing) == 0:
-            print_status('skipped', 'no releasing ROI')
-            continue
+            releasing = iuf.identify_releasing_rois(pixel_RI_stim, roi_dict, alpha=ALPHA, min_ri=MIN_RI)
+            if len(releasing) == 0:
+                print_status('skipped', 'no response-qualified ROI')
+                continue
 
-        thres_mask = iuf.generate_adaptive_membrane_mask(ref_ch1, visualize=0)
-        releasing_mask_raw = iuf.build_roi_mask(releasing)
-        releasing_mask = releasing_mask_raw & thres_mask
+            thres_mask = iuf.generate_adaptive_membrane_mask(ref_ch1, visualize=0)
+            releasing_mask_raw = iuf.build_roi_mask(releasing)
+            releasing_mask = releasing_mask_raw & thres_mask
 
-        ROI_mask = iuf.build_roi_mask(roi_dict)
-        anti_ROI_mask = ~binary_dilation(ROI_mask, iterations=DISTANCE_FROM_ROI)
-        anti_ROI_mask = anti_ROI_mask & thres_mask
+            ROI_mask = iuf.build_roi_mask(roi_dict)
+            anti_ROI_mask = ~binary_dilation(ROI_mask, iterations=DISTANCE_FROM_ROI)
+            anti_ROI_mask = anti_ROI_mask & thres_mask
 
-        n_raw = int(np.sum(releasing_mask_raw))
-        n_thres = int(np.sum(releasing_mask))
-        if n_raw == 0 or n_thres == 0:
-            print_status('skipped', 'no ROI pixels')
-            continue
+            n_raw = int(np.sum(releasing_mask_raw))
+            n_thres = int(np.sum(releasing_mask))
+            if n_raw == 0 or n_thres == 0:
+                print_status('skipped', 'no ROI pixels')
+                continue
 
-        pixel_reduction = 1 - (n_thres / n_raw)
-        if pixel_reduction > PIXEL_REDUCTION_THRESH:
-            print_status('skipped', f'pixel_reduction={pixel_reduction:.3f}')
-            continue
+            pixel_reduction = 1 - (n_thres / n_raw)
+            if pixel_reduction > PIXEL_REDUCTION_THRESH:
+                print_status('skipped', f'pixel_reduction={pixel_reduction:.3f}')
+                continue
 
-        ROI_RI_bins = np.nanmean(pixel_RI_bins[releasing_mask, :], axis=0)
-        ROI_RI2_bins = np.nanmean(pixel_RI2_bins[releasing_mask, :], axis=0)
-        neuropil_RI_bins = np.nanmean(pixel_RI_bins[anti_ROI_mask, :], axis=0)
+            ROI_RI_bins = np.nanmean(pixel_RI_bins[releasing_mask, :], axis=0)
+            ROI_RI2_bins = np.nanmean(pixel_RI2_bins[releasing_mask, :], axis=0)
+            neuropil_RI_bins = np.nanmean(pixel_RI_bins[anti_ROI_mask, :], axis=0)
 
-        roi_tau, roi_r2 = fit_tau(ROI_RI_bins)
-        roi2_tau, roi2_r2 = fit_tau(ROI_RI2_bins)
-        neu_tau, neu_r2 = fit_tau(neuropil_RI_bins)
+            roi_tau, roi_r2 = fit_tau(ROI_RI_bins)
+            roi2_tau, roi2_r2 = fit_tau(ROI_RI2_bins)
+            neu_tau, neu_r2 = fit_tau(neuropil_RI_bins)
 
-        row = {
-            'transmitter': dataset['transmitter'],
-            'sensor': dataset['sensor'],
-            'recname': recname,
-            'animal': recname.split('-')[0],
-            'n_roi': len(releasing),
-            'pixel_reduction': float(pixel_reduction),
-            'roi_tau_s': roi_tau,
-            'roi_r2': roi_r2,
-            'roi_ctrl_tau_s': roi2_tau,
-            'roi_ctrl_r2': roi2_r2,
-            'neuropil_tau_s': neu_tau,
-            'neuropil_r2': neu_r2,
-            'roi_peak': float(np.nanmax(ROI_RI_bins)),
-            'roi_ctrl_peak': float(np.nanmax(ROI_RI2_bins)),
-            'neuropil_peak': float(np.nanmax(neuropil_RI_bins)),
-            'roi_trace': ROI_RI_bins,
-            'roi_ctrl_trace': ROI_RI2_bins,
-            'neuropil_trace': neuropil_RI_bins,
-            }
+            row = {
+                'transmitter': dataset['transmitter'],
+                'sensor': dataset['sensor'],
+                'recname': recname,
+                'animal': recname.split('-')[0],
+                'n_roi': len(releasing),
+                'pixel_reduction': float(pixel_reduction),
+                'roi_tau_s': roi_tau,
+                'roi_r2': roi_r2,
+                'roi_ctrl_tau_s': roi2_tau,
+                'roi_ctrl_r2': roi2_r2,
+                'neuropil_tau_s': neu_tau,
+                'neuropil_r2': neu_r2,
+                'roi_peak': float(np.nanmax(ROI_RI_bins)),
+                'roi_ctrl_peak': float(np.nanmax(ROI_RI2_bins)),
+                'neuropil_peak': float(np.nanmax(neuropil_RI_bins)),
+                'roi_trace': ROI_RI_bins,
+                'roi_ctrl_trace': ROI_RI2_bins,
+                'neuropil_trace': neuropil_RI_bins,
+                }
 
-        all_rows.append(row)
-        print_status('done', f'ROI tau={row["roi_tau_s"]:.3f}, neu tau={row["neuropil_tau_s"]:.3f}')
-
-
-#%% save tables
-csv_path = data_stem / 'roi_neuropil_timecourse_metrics.csv'
-serialised = []
-for row in all_rows:
-    serialised.append({
-        k: v for k, v in row.items()
-        if not isinstance(v, np.ndarray)
-        })
-
-with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-    writer = csv.DictWriter(f, fieldnames=list(serialised[0].keys()))
-    writer.writeheader()
-    writer.writerows(serialised)
+            all_rows.append(row)
+            print_status('done', f'ROI tau={row["roi_tau_s"]:.3f}, neu tau={row["neuropil_tau_s"]:.3f}')
 
 
-#%% print summary
-print_statistics_section()
-for dataset in DATASETS:
-    curr = [row for row in all_rows if row['transmitter'] == dataset['transmitter']]
-    print(f'{dataset["sensor"]}: {len(curr)} sessions')
-    for key in ['roi_tau_s', 'roi_ctrl_tau_s', 'neuropil_tau_s', 'roi_peak', 'neuropil_peak']:
-        vals = np.asarray([float(row[key]) for row in curr], dtype=float)
-        vals = vals[np.isfinite(vals)]
-        print(f'  {key}: n={vals.size}, median={np.nanmedian(vals):.4g}, mean={np.nanmean(vals):.4g}')
+    #%% save tables
+    csv_path = data_stem / 'roi_neuropil_timecourse_metrics.csv'
+    serialised = []
+    for row in all_rows:
+        serialised.append({
+            k: v for k, v in row.items()
+            if not isinstance(v, np.ndarray)
+            })
+
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=list(serialised[0].keys()))
+        writer.writeheader()
+        writer.writerows(serialised)
 
 
-#%% plot
-saved = [('csv', csv_path)]
+    #%% print summary
+    print_statistics_section()
+    for dataset in DATASETS:
+        curr = [row for row in all_rows if row['transmitter'] == dataset['transmitter']]
+        print(f'{dataset["sensor"]}: {len(curr)} sessions')
+        for key in ['roi_tau_s', 'roi_ctrl_tau_s', 'neuropil_tau_s', 'roi_peak', 'neuropil_peak']:
+            vals = np.asarray([float(row[key]) for row in curr], dtype=float)
+            vals = vals[np.isfinite(vals)]
+            print(f'  {key}: n={vals.size}, median={np.nanmedian(vals):.4g}, mean={np.nanmean(vals):.4g}')
 
-fig, axs = plt.subplots(2, 2, figsize=(7.6, 4.8))
-for ax, dataset in zip(axs[0], DATASETS):
-    plot_trace_panel(ax, all_rows, dataset)
-axs[0, 0].set_ylabel('RI')
-axs[0, 1].set_ylabel('RI')
 
-plot_tau_violin(axs[1, 0], all_rows, 'roi_tau_s')
-axs[1, 0].set(title='ROI tau', ylabel='tau (s)')
+    #%% plot
+    saved = [('csv', csv_path)]
 
-plot_tau_violin(axs[1, 1], all_rows, 'neuropil_tau_s')
-axs[1, 1].set(title='Neuropil tau', ylabel='tau (s)')
+    fig, axs = plt.subplots(2, 2, figsize=(7.6, 4.8))
+    for ax, dataset in zip(axs[0], DATASETS):
+        plot_trace_panel(ax, all_rows, dataset)
+    axs[0, 0].set_ylabel('RI')
+    axs[0, 1].set_ylabel('RI')
 
-fig.tight_layout(w_pad=1.0, h_pad=1.0)
+    plot_tau_violin(axs[1, 0], all_rows, 'roi_tau_s')
+    axs[1, 0].set(title='ROI tau', ylabel='tau (s)')
 
-for ext in ['.png', '.pdf']:
-    out = save_stem / f'dopamine_norepinephrine_roi_neuropil_timecourses{ext}'
-    fig.savefig(out, dpi=300, bbox_inches='tight')
-    saved.append((ext[1:], out))
-plt.close(fig)
+    plot_tau_violin(axs[1, 1], all_rows, 'neuropil_tau_s')
+    axs[1, 1].set(title='Neuropil tau', ylabel='tau (s)')
 
-print_files_saved(saved)
+    fig.tight_layout(w_pad=1.0, h_pad=1.0)
+
+    for ext in ['.png', '.pdf']:
+        out = save_stem / f'dopamine_norepinephrine_roi_neuropil_timecourses{ext}'
+        fig.savefig(out, dpi=300, bbox_inches='tight')
+        saved.append((ext[1:], out))
+    plt.close(fig)
+
+    print_files_saved(saved)
+
+
+if __name__ == '__main__':
+    main()

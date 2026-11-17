@@ -1,20 +1,31 @@
 # -*- coding: utf-8 -*-
 '''
-Created on Mon Jun 29 2026
+Created on Wed Jul 29 22:54:58 2026
 
 normalise dLight and nLight comparisons against source-paper sensor scales
 
 @author: Dinghao Luo
 '''
 
-#%% imports
 from __future__ import annotations
 
-from dataclasses import dataclass
+#%% imports
+import sys
 from pathlib import Path
+
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+if str(repo_root / 'utils') not in sys.path:
+    sys.path.insert(0, str(repo_root / 'utils'))
+
+import project_paths as pp
+import rec_list
+
+
+from dataclasses import dataclass
 import csv
 import re
-import sys
 
 import numpy as np
 import pandas as pd
@@ -523,7 +534,7 @@ def main():
         'spatial_tau_px',
         r'spatial $\tau$ (px)',
         )
-    axs[1, 1].set_title('spread around releasing ROIs')
+    axs[1, 1].set_title('spread around response-qualified ROIs')
 
     plot_spatial_lines(
         axs[1, 2],
@@ -552,7 +563,7 @@ def main():
         'spatial_tau_px',
         r'spatial $\tau$ (px)',
         )
-    axs[0, 0].set_title('releasing ROI anchor')
+    axs[0, 0].set_title('response-qualified ROI anchor')
 
     plot_spatial_lines(
         axs[0, 1],
