@@ -88,21 +88,6 @@ def build_rows():
 def main():
     output = build_rows()
     output.to_csv(OUTPUT_ROOT / 'fit_success_censoring.csv', index=False)
-    methods = '''# Fit-success and censoring analysis
-
-This table uses the metric-wise session inclusion rows in
-`data/catecholamine_comparison/nlight_vs_dlight_single_state/inclusion_exclusion.csv`.
-The eligible denominator is every session with a recruitment row for the same
-sensor and event; an included session has a finite fit metric after the stated
-quality-control rules. Recorded fit units are the included ROI or ACR counts,
-not an attempted-unit denominator. Natural per-ROI `R2` values are summarised
-from `per_roi_fits.csv`; missing optogenetic failed-fit traces are not reconstructed.
-
-The source tables contain no pre-event noise column, so noise accounting remains
-pending. This table is therefore a censoring denominator and quality-control record, not a
-claim that fit failures are missing at random.
-'''
-    (OUTPUT_ROOT / 'fit_success_censoring_methods.md').write_text(methods, encoding='utf-8')
     print(f'wrote {len(output)} fit-success rows')
 
 

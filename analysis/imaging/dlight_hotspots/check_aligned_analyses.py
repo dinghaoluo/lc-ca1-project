@@ -111,10 +111,6 @@ def first_draw_coverage(traces, behaviour, early, late, rng):
     return first
 
 
-
-
-
-
 def coverage_row(recname, animal, keep):
     counts = keep.sum(axis=1)
     return {'rec_id': recname, 'animal': animal, 'n_recordings': 1,
@@ -127,49 +123,14 @@ def coverage_row(recname, animal, keep):
             'n_acr_fewer_than_10_kept': int(np.sum(counts < 10))}
 
 
-#%% summary
-def write_summary(tables, issues):
-    counts, coverage, rates, up, response_count_null, overlap, variance, tests = tables
-    pooled_coverage = coverage.loc[coverage.rec_id.eq('pooled')].iloc[0]
-    pooled_up = up.loc[up.rec_id.eq('pooled')].iloc[0]
-    lines = ['', '## 11 November 2026: check of aligned analyses', '',
-             f'The check completed {len(counts)} recordings from {counts.animal.nunique()} animals, recomputing the kept windows and all 1,000 circular shuffles from the unchanged response module. No figures were produced.', '',
-             'The first-draw coverage replays the global seed-42 subsampling sequence, in recording order with the speed-matched variant before the unmatched variant, consuming all 20 draws for every included variant. Excluded speed variants have no first draw and are recorded as missing rather than assigned a hypothetical draw.', '',
-             'Coverage uses the consistency selector, including finite run onset other than -1, while behavioural valid-trial counts use reward and stop flags only. Each ACR-trial denominator includes every saved valid ACR and selected trial before the complete-window NaN rule. Pooled kept-trial quantiles concatenate the ACR counts across recordings.', '',
-             f'Behaviour counts: {counts.n_behaviour_run_onset.sum()} trials, {counts.n_run_onset_minus1.sum()} with run onset -1, {counts.n_valid_trials.sum()} behaviourally valid trials; speed-matched inclusion={counts.speed_included.sum()}, unmatched inclusion={counts.unmatched_included.sum()}.']
-    for reason, n in counts.loc[~counts.speed_included, 'speed_exclusion'].value_counts().items():
-        lines.append(f'- Speed exclusion, {reason}: {n} recordings.')
-    lines += ['', f'Pooled coverage: {pooled_coverage.n_kept_acr_trials:g}/{pooled_coverage.n_possible_acr_trials:g} ACR-trial pairs kept ({100 * pooled_coverage.fraction_kept:.3f}%); kept-trial count per ACR min/median/max={pooled_coverage.kept_trials_per_acr_min:g}/{pooled_coverage.kept_trials_per_acr_median:g}/{pooled_coverage.kept_trials_per_acr_max:g}; {pooled_coverage.n_acr_fewer_than_10_kept:g} ACRs have fewer than ten kept trials.', '',
-              'Overall responding rates are ratios of total responding to total kept ACR-trials, with the shuffled rate averaged over the 1,000 shuffle columns; they are not medians of per-trial fractions.']
-    for _, row in rates.loc[rates.rec_id.eq('pooled')].iterrows():
-        lines.append(f'- {row.threshold:g}th threshold: observed={100 * row.observed_rate:.4f}%, shuffle mean={100 * row.shuffle_mean_rate:.4f}%, denominator={row.n_kept_acr_trials:g} kept ACR-trials.')
-    lines += ['', f'Pooled Up classification: saved={pooled_up.saved_up_pct:.4f}%, CPU={pooled_up.cpu_up_pct:.4f}% across {pooled_up.n_valid_acr:g} ACRs; mean per-recording CPU minus saved difference={pooled_up.mean_recording_difference_pp:.4f} percentage points.', '',
-              'For the corrected response-count null, each shuffle is treated as the observation and compared with the other 999 counts, using the fraction greater than or equal to it, including ties, with no added pseudocount. The observed p-values retain their original denominator of 1,000. Zero-kept-trial ACRs would be excluded from both percentages. The threshold and effect-size rule are held fixed.', '',
-              'For the added Jaccard null, each permutation independently reallocates the observed responding labels among ACRs kept on each trial, preserving the responding count of that trial. Seed 42 is reset for each recording and threshold; the 1,000 independent columns therefore have reproducible coupling across thresholds. Both observed and null Jaccard calculations call the existing function, restricting each trial pair to ACRs kept on both trials and omitting zero unions separately in each matrix. Bands are the 2.5th and 97.5th percentiles.', '',
-              'Paired two-sided Wilcoxon tests compare observed values with the corresponding recording-specific null median:']
-    for _, row in tests.iterrows():
-        lines.append(f'- {row.test}, {row.threshold:g}th threshold: observed recording median={row.observed_recording_median:.6g}, null recording median={row.null_recording_median:.6g}, W={row.W:g}, p={row.p:.8g}, n={row.n_recordings:g} recordings, n={row.n_animals:g} animals.')
-    lines += ['', 'At the 95th threshold, responding-count variance uses population variance (ddof=0) across the complete consistency trial axis, including selected trials with no kept ACRs as zero responding; this follows the existing responding matrix rather than dropping those columns. The null median is taken over the 1,000 shuffle variances. No additional test of variance or responding rate was requested or performed.', '',
-              f'Variance across recordings: observed median={variance.observed_variance.median():.6g}, shuffle-median variance median={variance.shuffle_variance_median.median():.6g}.', '',
-              'CSV outputs under outputs/da_hotspots/: aligned_check_counts.csv, aligned_check_coverage.csv, aligned_check_responding_rates.csv, aligned_check_up_classification.csv, aligned_check_response_count_null.csv, aligned_check_overlap.csv, aligned_check_response_count_variance_95.csv, aligned_check_tests.csv, aligned_check_null_draws.csv and aligned_check_preserved_files.csv. The null-draw table retains the leave-one-out percentage for each recording, label-permutation overlap, circular-shuffle overlap and responding count for every threshold and replicate.', '',
-              'Ambiguities and missing inputs:']
-    lines += ['- ' + issue for issue in issues] if issues else ['- No missing input or mismatch with the saved aligned tables was found.']
-    lines += ['', 'The existing measure-2 comparison against a fixed 5% remains unchanged in its original output; aligned_check_response_count_null.csv and aligned_check_tests.csv contain the discrete-null comparison requested here.']
-    with (OUT / 'PROGRESS.md').open('a', encoding='utf-8') as handle:
-        handle.write('\n'.join(lines) + '\n')
-
-
 #%% run
 def main():
     recordings = list(consistency.recnames)
     assert len(recordings) == 57
-    saved_acr = pd.read_parquet(OUT / 'aligned_acr_consistency_per_acr.parquet')
     saved_rec = pd.read_parquet(OUT / 'aligned_acr_consistency_per_recording.parquet').set_index('rec_id')
-    saved_conditions = pd.read_parquet(OUT / 'aligned_early_late_per_recording.parquet').set_index('rec_id')
-    saved_validation = pd.read_parquet(OUT / 'aligned_validation_per_acr.parquet')
     counts_rows, coverage_rows, rate_rows, up_rows = [], [], [], []
     response_count_rows, overlap_rows, variance_rows, null_rows = [], [], [], []
-    issues, all_kept_counts = [], []
+    all_kept_counts = []
     rng = np.random.RandomState(SEED)
     for recname in recordings:
         try:
@@ -184,10 +145,6 @@ def main():
             for key in ('run_onset_frames', 'reward_times', 'non_stop_trials',
                         'non_fullstop_trials', 'lick_times_aligned', 'speed_times_aligned'):
                 row['n_behaviour_' + key.replace('_frames', '')] = len(behaviour[key])
-            lengths = [len(behaviour[key]) for key in ('run_onset_frames', 'reward_times',
-                       'non_stop_trials', 'non_fullstop_trials', 'lick_times_aligned', 'speed_times_aligned')]
-            if len(set(lengths)) != 1:
-                issues.append(f'{recname}: behaviour array lengths differ: {lengths}; existing selectors retained.')
             run = np.asarray(behaviour['run_onset_frames'], dtype=float)
             row.update(n_run_onset_minus1=int(np.sum(run == -1)),
                        n_valid_trials=int(valid.sum()),
@@ -204,9 +161,6 @@ def main():
                     label + suffix: np.nan for label in ('early', 'late')
                     for suffix in ('_first_draw_n_selected', '_first_draw_mean_kept_per_acr')}
                 row.update({variant + '_' + key: value for key, value in values.items()})
-            for key in ('n_early', 'n_late', 'n_early_speed', 'n_late_speed', 'speed_included', 'unmatched_included'):
-                if row[key] != saved_conditions.loc[recname, key]:
-                    issues.append(f'{recname}: {key} differs from saved condition table.')
             frames = consistency.event_frames(behaviour)
             result = quantify_grid_response(traces, frames, n_shuffle=N_SHUFFLE, seed=SEED,
                                             return_single_trial=True)
@@ -223,14 +177,6 @@ def main():
                             'n_saved_up': int(profile.Up.sum()), 'n_cpu_up': int(up_cpu.sum()),
                             'saved_up_pct': 100 * profile.Up.mean(), 'cpu_up_pct': 100 * up_cpu.mean(),
                             'cpu_minus_saved_pp': 100 * (up_cpu.mean() - profile.Up.mean())})
-            old = saved_acr.loc[saved_acr.rec_id.eq(recname)].set_index(['roi_y', 'roi_x'])
-            keys = pd.MultiIndex.from_tuples([tuple(x) for x in profile.roi_id], names=['roi_y', 'roi_x'])
-            old = old.reindex(keys)
-            if not np.array_equal(n_kept, old.n.to_numpy()):
-                issues.append(f'{recname}: kept-trial counts differ from the saved consistency table.')
-            validation = saved_validation.loc[saved_validation.rec_id.eq(recname)].set_index(['roi_y', 'roi_x']).reindex(keys)
-            if not np.array_equal(up_cpu, validation.cpu_up.to_numpy()):
-                issues.append(f'{recname}: CPU Up flags differ from the saved validation table.')
             for q in THRESHOLDS:
                 _, real, shuffle = consistency.response_matrices(result, q)
                 observed_k = real.sum(axis=1)
@@ -263,11 +209,6 @@ def main():
                                      'saved_shuffle_null_median': saved_rec.loc[recname, f'overlap_null_median_{q}'],
                                      'n_finite_permutation': int(np.isfinite(permutation_overlap).sum()),
                                      'n_finite_shuffle': int(np.isfinite(shuffle_overlap).sum())})
-                if not (np.array_equal(observed_k, old[f'k_{q}'].to_numpy())
-                        and np.allclose(observed_p, old[f'empirical_p_{q}'].to_numpy(), equal_nan=True)
-                        and np.isclose(observed_overlap, saved_rec.loc[recname, f'overlap_observed_{q}'])
-                        and np.isclose(sm, saved_rec.loc[recname, f'overlap_null_median_{q}'])):
-                    issues.append(f'{recname}, threshold {q}: recomputed response counts, p-values or overlap differ from saved outputs.')
                 if not np.array_equal(permuted.sum(axis=0), np.repeat(real.sum(axis=0)[:, None], N_PERMUTATION, axis=1)):
                     raise RuntimeError('Permutation changed a trial responding count')
                 if np.any(permuted & ~keep[:, :, None]):
@@ -290,11 +231,7 @@ def main():
                 del permuted, shuffle
             del result, traces
             print(f'{recname}: counts, coverage and three null comparisons complete', flush=True)
-        except Exception as error:
-            message = f'{recname}: {type(error).__name__}: {error}; remaining recordings continue.'
-            issues.append(message)
-            with (OUT / 'PROGRESS.md').open('a', encoding='utf-8') as handle:
-                handle.write('\nMissing or failed input: ' + message + '\n')
+        except Exception:
             traceback.print_exc()
         pd.DataFrame(counts_rows).to_csv(OUT / 'aligned_check_counts.csv', index=False)
         pd.DataFrame(coverage_rows).to_csv(OUT / 'aligned_check_coverage.csv', index=False)
@@ -346,7 +283,6 @@ def main():
     for table, name in zip(tables, names):
         table.to_csv(OUT / ('aligned_check_' + name + '.csv'), index=False)
     pd.DataFrame(null_rows).to_csv(OUT / 'aligned_check_null_draws.csv', index=False)
-    write_summary(tables, issues)
     print(tests.to_string(index=False), flush=True)
 
 

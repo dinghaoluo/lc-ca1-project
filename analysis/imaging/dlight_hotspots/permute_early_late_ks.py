@@ -129,22 +129,6 @@ def main():
         statistic, p_value = float(test.statistic), float(test.pvalue)
     significant = int((tested.permutation_p < 0.05).sum())
     low, high = np.percentile(difference, [25, 75])
-    lines = ['', '## 12 November 2026: early/late KS trial-label permutation reference', '',
-             'I used the saved unmatched equal-number subsamples in followup_early_late_trials.csv for every included recording in analyse_early_late_ecdf_and_prediction.py, preserving the saved trial order and run-onset frames. All 57 recordings were retained, including recordings with small groups; the late-trial cutoff used for the separate split-half figure was not applied here.', '',
-             'The imported loader prepares the full-grid traces and selects the saved valid ACRs. The imported alignment, complete-window NaN rule and trial_amplitudes define response [0, 1) s minus baseline [-1, 0) s around run onset. Each group averages its kept trials separately for each ACR, omitting non-finite ACR means separately from the two distributions. Observed D is the two-sample KS statistic on these finite distributions, over their full range, exactly as in plot_split_half_ecdf.py.', '',
-             'For each recording I pooled only its two selected groups and used a fresh RandomState(42) to permute the trial indices 1,000 times, assigning the first original group size to one group and the remainder to the other. The same reassignment applies to every ACR, and the original missing windows travel with their trials. Recomputing means from the fixed per-trial amplitudes is equivalent to realigning each reassigned group because neither alignment nor the NaN rule depends on the group labels.', '',
-             'The null summary is its median and 95th percentile. The upper-tail permutation p-value is (1 + number of null D >= observed D) / (1 + number of finite permutations), including ties; this Monte Carlo correction prevents zero p-values. All 1,000 permutations are expected in each denominator; any non-finite counts are retained in the CSV. Only the KS distance is used from the two-sample routine, not its parametric p-value.', '',
-             f'Across recordings, {significant}/{len(tested)} ({100 * significant / len(tested):.6g}%) have permutation p < 0.05, against the requested nominal 5% reference. The finite permutation reference and ties can make the attainable rejection rate below 5%; no separate test of this fraction was requested.', '',
-             f'Observed recording median D={tested.observed_D.median():.9g}; null-median recording median={tested.null_median.median():.9g}. Median paired observed D minus null median={np.median(difference):.9g}, recording IQR [{low:.9g}, {high:.9g}]. Paired two-sided Wilcoxon signed-rank test: W={statistic:g}, p={p_value:.9g}, n={len(tested)} recordings, n={tested.animal.nunique()} animals; non-finite recordings omitted={int((~valid).sum())}.', '',
-             f'Agreement with saved amplitudes: maximum absolute difference={table.max_saved_amplitude_difference.max():.9g} dF/F; all finite masks agree={bool(table.saved_finite_mask_agrees.all())}; maximum absolute difference from saved observed KS D={np.max(np.abs(table.observed_D - table.saved_observed_D)):.9g}. Finite null counts range from {table.n_finite_permutations.min()} to {table.n_finite_permutations.max()}.', '',
-             'Per-recording results:', '',
-             '| recording | trials per group | observed D | null median | null 95th percentile | permutation p |',
-             '| --- | ---: | ---: | ---: | ---: | ---: |']
-    for row in table.itertuples():
-        lines.append(f'| {row.rec_id} | {row.n_early_trials} | {row.observed_D:.9g} | {row.null_median:.9g} | {row.null_95th:.9g} | {row.permutation_p:.9g} |')
-    lines += ['', 'Table: outputs/da_hotspots/early_late_ks_permutation.csv. Trial-label exchangeability is the assumption behind this reference: pooling preserves the recorded trials and ACR dependence while removing their early/late labels. No figures or other analyses were produced.']
-    with (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8') as stream:
-        stream.write(chr(10).join(lines) + chr(10))
     print(f'Complete: {significant}/{len(tested)} p < 0.05; W={statistic:g}, p={p_value:.9g}, n={len(tested)}, animals={tested.animal.nunique()}', flush=True)
 
 

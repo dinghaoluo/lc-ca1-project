@@ -540,44 +540,6 @@ def main():
     )
     plt.close(figure)
 
-    methods = f"""
-# Geometry-aware spatial-locality sensitivity analysis
-
-This analysis tests whether response values at nearby ROI centroids are more
-similar than expected after preserving the recorded ROI geometry. For each
-session, ROI response is the mean response-index value across trials. Pairwise
-ROI weights are Gaussian functions of centroid distance, with bandwidth equal
-to the median nearest-neighbour distance within that session. The statistic is
-global Moran's I. The null permutes response values across the fixed centroids,
-leaving the response distribution and the irregular field geometry unchanged.
-The empirical one-sided probability is (1 + the number of null I values at
-least as large as observed) / (B + 1), with B={N_PERMUTATIONS} permutations for
-the full session and B={N_MATCHED_PERMUTATIONS} for each matched resample.
-
-The raw statistic is accompanied by a field-gradient control. A least-squares
-plane in x and y is removed from the session response before the same Moran
-calculation. The primary cross-sensor sensitivity uses exactly
-{N_MATCHED_TRIALS} trials and {N_MATCHED_ROIS} ROIs, with
-{N_MATCHED_RESAMPLES} without-replacement resamples per eligible session.
-The matched endpoint uses the raw response values; the plane-removal control is
-reported on full sessions only because fitting a three-parameter plane to ten
-ROIs leaves too few degrees of freedom for a stable matched sensitivity.
-Session estimates are medians across resamples. Animal medians and an
-animal-balanced bootstrap take a median within each animal before the median
-across sampled animals, so unequal session counts do not reweight animals.
-
-This sensitivity analysis tests local organisation of reporter response maps;
-it does not establish transmitter identity, synaptic release, or co-release.
-The existing top-10%
-contribution metric is retained as a separate response-concentration measure;
-it is not used as a spatial-locality statistic.
-
-Random seed: {RNG_SEED}. Source dimensions and relative response-array and
-ROI-mask paths are retained in spatial_locality_sessions.csv.
-"""
-    (OUTPUT_ROOT / 'spatial_locality_methods.md').write_text(
-        methods, encoding='utf-8'
-    )
     print(f'wrote {len(sessions)} session-analysis rows')
     print(comparisons.to_string(index=False))
 

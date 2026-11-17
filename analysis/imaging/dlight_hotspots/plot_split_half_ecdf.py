@@ -119,30 +119,9 @@ def main():
     fig.savefig(path, dpi=200, facecolor='white')
     plt.close(fig)
 
-    lines = ['', '## 12 November 2026: late-trial split-half ECDFs', '',
-             'I used the unmatched recordings and imported late-trial selection from analyse_early_late_ecdf_and_prediction.py, before any equal-number early/late subsampling. For each recording a fresh RandomState(42) permuted the complete late-trial list; the first floor(n_late / 2) entries form half 1, the next equally sized block forms half 2, and the final permuted trial is dropped if the count is odd. Trial numbers logged below refer to one-based original behaviour indices.', '',
-             'The imported loader retains the same saved valid ACRs and full-grid trace preparation; align_trials, keep_aligned_trials and trial_amplitudes then provide the complete-window NaN rule and response [0, 1) s minus baseline [-1, 0) s around run onset. Amplitudes are averaged over kept trials separately for each ACR and half, with non-finite ACR amplitudes omitted separately from each distribution. No missing window was replaced and no extra trials were drawn.', '',
-             f'The existing early/late distributions were read from followup_early_late_amplitudes.csv (unmatched variant), retaining its saved balanced draw. The split-half and early/late KS summaries use the same {len(table)} recordings from {table.animal.nunique()} animals after applying the late-trial cutoff to both. Each KS statistic is the two-sample D between the two finite per-ACR distributions, computed over their full range, including values outside the displayed limits. Only D is reported; no p-values or additional tests were requested or used.', '',
-             f'The figure retains the original unmatched layout (six columns, {nrow} rows, 2.65 by 2.15 inches per panel), axes, colours, line widths and shared x-limits [{low:.2f}, {high:.2f}] dF/F, reconstructed from the original unmatched amplitudes with the original percentile and rounding rule. Included recordings retain recording-list order, compacted after exclusions; empty final panels are hidden. Figure: figures/dlight_hotspots/split_half_ecdf_late.png.', '',
-             'Skipped recordings with fewer than 10 late trials:']
-    for recname, count in skipped:
-        lines.append(f'- {recname}: {count} late trials; omitted from the figure and both KS summaries.')
-    lines += ['', '| summary across recordings | late split-half KS D | early versus late unmatched KS D |',
-              '| --- | ---: | ---: |']
     median_split, median_original = table.split_d.median(), table.early_late_d.median()
     split_low, split_high = np.percentile(table.split_d, [25, 75])
     original_low, original_high = np.percentile(table.early_late_d, [25, 75])
-    lines += [f'| median | {median_split:.9g} | {median_original:.9g} |',
-              f'| IQR (25th to 75th percentile) | [{split_low:.9g}, {split_high:.9g}] | [{original_low:.9g}, {original_high:.9g}] |',
-              f'| n recordings | {len(table)} | {len(table)} |', '',
-              'Per-recording values and split boundaries:', '',
-              '| recording | late trials | trials per half | dropped trial | missing ACRs half 1 / half 2 | finite ACRs half 1 / half 2 | finite ACRs early / late | split-half D | early/late D |',
-              '| --- | ---: | ---: | --- | --- | --- | --- | ---: | ---: |']
-    for row in table.itertuples():
-        lines.append(f'| {row.rec_id} | {row.n_late} | {row.n_half} | {row.dropped} | {row.missing_first} / {row.missing_second} | {row.n_first} / {row.n_second} | {row.n_early} / {row.n_late_acr} | {row.split_d:.9g} | {row.early_late_d:.9g} |')
-    lines += ['', 'The two comparisons generally average different numbers of trials per ACR; their KS summaries are descriptive distribution distances, with the trial counts and missing ACR amplitudes retained above. No other analysis or figure was produced.']
-    with (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8') as stream:
-        stream.write(chr(10).join(lines) + chr(10))
     print(f'Complete: n={len(table)}; split D median={median_split:.9g}, IQR [{split_low:.9g}, {split_high:.9g}]; early/late median={median_original:.9g}, IQR [{original_low:.9g}, {original_high:.9g}]', flush=True)
 
 

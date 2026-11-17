@@ -496,43 +496,9 @@ def analyse_recording(recname):
     )
 
 
-def append_progress(recording_table, stats, metadata):
-    progress_path = OUTPUT_ROOT / 'PROGRESS.md'
-    with progress_path.open('a', encoding='utf-8') as stream:
-        stream.write('\n## 6 November 2026: DA hotspot early versus late first-lick comparison\n\n')
-        stream.write(
-            f'Loaded Jingyu\'s final {metadata["n_recordings"]}-recording list, '
-            'the saved dilation-k=0 corrected dLight traces, behaviour profiles and '
-            'combined grid dataframes. Valid ACRs were dLight-valid, red-valid and '
-            'non-edge grids. First licks were the first finite licks at or after '
-            '1 s; early was <2.5 s and late was 2.5 to 3.5 s.\n\n'
-        )
-        without_speed = recording_table.loc[recording_table['speed_mode'].eq('without_speed')]
-        with_speed = recording_table.loc[recording_table['speed_mode'].eq('with_speed')]
-        stream.write(
-            f'Without speed matching, {len(without_speed)} recordings were processed and '
-            f'{int(without_speed["included"].sum())} had both trial groups. Reciprocal seven-bin '
-            f'±1 SD speed matching left {int(with_speed["included"].sum())} recordings with at least '
-            f'{MIN_MATCHED_TRIALS} trials in each group.\n\n'
-        )
-        stream.write('Wilcoxon signed-rank tests, late minus early, recording as the unit:\n\n')
-        for result in stats:
-            stream.write(
-                f'- {result["speed_mode"]}, {result["metric"]}: '
-                f'n={result["n_recordings"]} recordings, '
-                f'n={result["n_animals"]} animals, '
-                f'W={result["statistic"]}, p={result["p_value"]}.\n'
-            )
-        stream.write(
-            f'Per-ACR per-trial rows: {metadata["n_trial_rows"]}; '
-            f'included recording rows: {int(recording_table["included"].sum())}.\n'
-        )
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description='compare early and late first-lick dLight responses')
     parser.add_argument('--recording', help='optional recording substring')
-    parser.add_argument('--no-progress', action='store_true')
     args = parser.parse_args(argv)
 
     recordings = list(recnames)
@@ -594,11 +560,8 @@ def main(argv=None):
         )
 
     stats = pd.DataFrame(stats)
-    metadata = {'n_recordings': len(recordings), 'n_trial_rows': len(per_trial)}
     print(per_recording.to_string(index=False))
     print(stats.to_string(index=False))
-    if not args.no_progress:
-        append_progress(per_recording, stats.to_dict('records'), metadata)
 
 
 if __name__ == '__main__':

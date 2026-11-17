@@ -162,28 +162,10 @@ def main():
         animal_median_up_fraction=('up_fraction', 'median'),
     )
     comparisons = comparison_rows(session_table)
-    methods = f'''# Natural-threshold sensitivity analysis
-
-This analysis rebuilds the current natural dLight and nLight tables with
-{SOURCE_SCRIPT} and saves every valid session at all nine classifier settings.
-The valid denominator is the non-edge ACR set with finite green and red profiles
-and the stored baseline thresholds. A classifier-positive ACR exceeds its own
-within-ACR circular-shuffle percentile and the requested effect-size threshold.
-
-Session values are the fraction of valid ACRs classified positive. Animal values
-are medians of those session fractions, and the animal comparison is an exact
-Mann-Whitney calculation at the available animal count. The bootstrap resamples
-animals, takes a within-animal session median, and then takes the median across
-sampled animals (N_BOOTSTRAPS={N_BOOTSTRAPS}, seed {BOOTSTRAP_SEED}); it is an
-interval for estimation, not additional animal replication. This table is
-classifier sensitivity evidence, not a replacement for
-the prespecified 95th-percentile, effect-size > 0.05 endpoint.
-'''
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     session_table.to_csv(OUTPUT_ROOT / 'natural_threshold_session_metrics.csv', index=False)
     animal_table.to_csv(OUTPUT_ROOT / 'natural_threshold_animal_metrics.csv', index=False)
     comparisons.to_csv(OUTPUT_ROOT / 'natural_threshold_comparisons.csv', index=False)
-    (OUTPUT_ROOT / 'natural_threshold_sensitivity_methods.md').write_text(methods, encoding='utf-8')
     print(f'wrote {len(session_table)} session-setting rows')
     print(f'wrote {len(animal_table)} animal-setting rows')
     print(f'wrote {len(comparisons)} comparison rows')

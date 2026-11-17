@@ -29,7 +29,7 @@ from common_functions import mpl_formatting
 mpl_formatting()
 import numpy as np
 import pandas as pd
-from scipy.stats import ttest_ind, wilcoxon
+from scipy.stats import ttest_ind
 
 repo_root = Path(__file__).resolve().parents[3]
 JINGYU_ROOT = pp.JINGYU_CODE_ROOT
@@ -172,21 +172,7 @@ def condition_draws(traces, profile, run_frames, early, late, rng):
     return draws
 
 
-def paired_test(first, second):
-    first = np.asarray(first, dtype=float)
-    second = np.asarray(second, dtype=float)
-    keep = np.isfinite(first) & np.isfinite(second)
-    first, second = first[keep], second[keep]
-    if len(first) == 0:
-        return np.nan, np.nan, 0
-    difference = first - second
-    if np.allclose(difference, 0):
-        return 0.0, 1.0, len(first)
-    result = wilcoxon(first, second, alternative='two-sided')
-    return float(result.statistic), float(result.pvalue), len(first)
-
-
-#%% figure and log
+#%% figure
 def make_figure(summary):
     fig, axes = plt.subplots(1, 2, figsize=(7.0, 3.5), sharey=True)
     for ax, variant, label in zip(axes, ('speed', 'unmatched'), ('speed matched', 'unmatched')):
@@ -205,22 +191,6 @@ def make_figure(summary):
     path = FIGURE_ROOT / 'early_late_pct_up.png'
     fig.savefig(path, dpi=200, facecolor='white')
     plt.close(fig)
-
-
-def write_log(summary, draw_table, exclusions):
-    lines = ['', '## 11 November 2026: corrected aligned early versus late dLight comparison', '', 'Jingyu\'s early/late trial criteria and the validated CPU response test were used. For each recording and variant, the smaller group was retained in full and 20 draws of the larger group were made without replacement (seed 42).', '', 'Exclusions:']
-    for variant in ('speed', 'unmatched'):
-        counts = exclusions[variant]
-        lines.append(f"- {variant}: {counts.get('no speed-complete trials', 0)} no speed-complete trials, {counts.get('fewer than 10 matched trials in one group', 0)} fewer than 10 matched trials, {counts.get('speed-bin t-test p < 0.05', 0)} speed-test exclusions, {counts.get('no early or late trials', 0)} with no group; included {int(summary[f'{variant}_included'].sum())} recordings.")
-    lines.append('')
-    for variant in ('speed', 'unmatched'):
-        included = summary.loc[summary[f'{variant}_included']]
-        stat, p_value, n = paired_test(included[f'{variant}_late_pct_up'], included[f'{variant}_early_pct_up'])
-        lines.append(f"- {variant}, Up percentage, late against early: W={stat:g}, p={p_value:.6g}, n={n} recordings, n={included.animal.nunique()} animals.")
-        stat, p_value, n = paired_test(included[f'{variant}_late_median_amplitude'], included[f'{variant}_early_median_amplitude'])
-        lines.append(f"- {variant}, median response amplitude, late against early: W={stat:g}, p={p_value:.6g}, n={n} recordings, n={included.animal.nunique()} animals.")
-    lines += ['', 'Table: `outputs/da_hotspots/aligned_early_late_per_recording.parquet`.', 'Figure: `figures/dlight_hotspots/early_late_pct_up.png`.', '', 'The saved behaviour profiles lack `reward_times_aligned`; no reconstruction was used because this comparison follows the explicit trial criteria above.']
-    (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8').write('\n'.join(lines) + '\n')
 
 
 #%% run
@@ -265,7 +235,6 @@ def main():
     summary.to_parquet(OUTPUT_ROOT / 'aligned_early_late_per_recording.parquet', index=False)
     draws.to_parquet(OUTPUT_ROOT / 'aligned_early_late_draws.parquet', index=False)
     make_figure(summary)
-    write_log(summary, draws, exclusions)
 
 
 if __name__ == '__main__':

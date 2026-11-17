@@ -104,22 +104,12 @@ def finite_summary(values):
     }
 
 
-def format_number(value, digits=3):
-    if not np.isfinite(value):
-        return 'unavailable'
-    return f'{value:.{digits}f}'
-
-
 def format_p(value):
     if not np.isfinite(value):
         return 'unavailable'
     if value < 0.001:
         return f'{value:.2e}'
     return f'{value:.3f}'
-
-
-
-
 
 
 def fit_temporal_profile(profile):
@@ -973,207 +963,6 @@ def inclusion_table(session_metrics):
     return pd.DataFrame(rows)
 
 
-def interpretation(row):
-    if not np.isfinite(row.p_value):
-        return 'not testable from the available cohort'
-    if row.q_value_bh < 0.05:
-        direction = 'higher' if row.rank_biserial_nlight_minus_dlight > 0 else 'lower'
-        return f'nLight was {direction}'
-    return 'no evidence of a sensor difference; this is not an equivalence result'
-
-
-def comparison_markdown_row(row, percent=False):
-    scale = 100 if percent else 1
-    nlight = (
-        f'{format_number(row.nlight_median * scale)} '
-        f'[{format_number(row.nlight_q1 * scale)}, {format_number(row.nlight_q3 * scale)}]; '
-        f'{row.nlight_n_sessions} sessions, {row.nlight_n_mice} mice, '
-        f'{row.nlight_n_roi_or_trials} ACRs/trials'
-    )
-    dlight = (
-        f'{format_number(row.dlight_median * scale)} '
-        f'[{format_number(row.dlight_q1 * scale)}, {format_number(row.dlight_q3 * scale)}]; '
-        f'{row.dlight_n_sessions} sessions, {row.dlight_n_mice} mice, '
-        f'{row.dlight_n_roi_or_trials} ACRs/trials'
-    )
-    test = (
-        f'U={format_number(row.mann_whitney_u, 1)}, p={format_p(row.p_value)}, '
-        f'BH q={format_p(row.q_value_bh)}, rank-biserial='
-        f'{format_number(row.rank_biserial_nlight_minus_dlight, 2)}'
-    )
-    return f'| {row.label} | {nlight} | {dlight} | {test} | {interpretation(row)} |'
-
-
-def summary_text(session_metrics, roi_metrics, comparisons, sensitivity, selected_sessions):
-    natural = session_metrics[session_metrics['event'] == 'natural_run_onset']
-    natural_roi = roi_metrics[roi_metrics['event'] == 'natural_run_onset']
-    dlight_temporal = natural_roi[
-        (natural_roi['sensor'] == 'dLight') & natural_roi['temporal_included'].fillna(False)
-    ]
-    dlight_fraction = natural.loc[natural['sensor'] == 'dLight', 'up_fraction']
-    dlight_natural_tau = finite_summary(dlight_temporal['temporal_tau_s'])
-
-    opto = session_metrics[session_metrics['event'] == 'opto_lc_stimulation']
-    dlight_opto_tau = finite_summary(opto.loc[opto['sensor'] == 'dLight', 'temporal_tau_s'])
-    dlight_opto_release = finite_summary(opto.loc[opto['sensor'] == 'dLight', 'up_fraction'])
-
-    all_time = pd.read_csv(OPTO_TABLE_ROOT / 'roi_neuropil_timecourse_metrics.csv')
-    broad_time = finite_summary(all_time.loc[all_time['sensor'].eq('nLight'), 'roi_tau_s'])
-    nlight_natural = natural[natural['sensor'].eq('nLight')]
-    nlight_opto = opto[opto['sensor'].eq('nLight')]
-    nlight_up_total = int(nlight_natural['n_up_roi'].sum())
-    nlight_valid_total = int(nlight_natural['n_valid_roi'].sum())
-    nlight_fraction_median = float(nlight_natural['up_fraction'].median())
-    nlight_opto_temporal_n = int(nlight_opto['temporal_tau_s'].notna().sum())
-    dlight_natural_tau_median = dlight_natural_tau['median']
-    dlight_natural_tau_n = dlight_natural_tau['n']
-    dlight_opto_tau_median = dlight_opto_tau['median']
-    dlight_opto_tau_n = dlight_opto_tau['n']
-    dlight_opto_release_median = dlight_opto_release['median']
-    broad_time_n = broad_time['n']
-    broad_time_median = broad_time['median']
-
-    lines = [
-        '# nLight versus dLight summary',
-        '',
-        '## Main result',
-        '',
-        (
-            'Natural run-onset nLight responses were selectively recruited in the prespecified cohort: '
-            f'{nlight_up_total} of {nlight_valid_total} valid ACRs '
-            f'were Up and the median session recruited {100 * nlight_fraction_median:.2f}% of '
-            'valid ACRs. The session-level Mann-Whitney results below describe a lower nLight '
-            'recruitment and amplitude in this table, while the kinetic estimate applies only to '
-            'the subset of sessions with at least one DA-Up ACR whose fit passed quality control. '
-            'These session-level comparisons are not the Chapter 3 biological inference.'
-        ),
-        '',
-        (
-            'The strict optogenetic Chapter 2 temporal fitting procedure produced a usable nLight time '
-            f'constant in only {nlight_opto_temporal_n} '
-            f'of the {len(selected_sessions)} prespecified sessions. That value is reported, but a '
-            'one-session group is not a stable population estimate. Across every metric, a '
-            'non-significant result is treated as '
-            'absence of evidence rather than evidence of equivalence.'
-        ),
-        '',
-        '## Session-level comparisons',
-        '',
-        'Values are median [IQR]. The original comparison generator treats session as the '
-        'independent unit; the rank-biserial sign is positive when nLight is higher. BH q values '
-        'correct that generator family. For Chapter 3, session tests are cohort descriptions and '
-        'animal-level exact tests and animal-then-session bootstrap intervals govern biological '
-        'inference.',
-        '',
-        '| Metric | nLight | dLight | Test | Reading |',
-        '|---|---|---|---|---|',
-    ]
-    percent_metrics = {'up_fraction', 'up_fraction_wilcoxon'}
-    for row in comparisons.itertuples(index=False):
-        lines.append(comparison_markdown_row(row, row.metric in percent_metrics))
-
-    lines.extend([
-        '',
-        '## Reconciliation with the Chapter 2 reference values',
-        '',
-        (
-            f'- Natural dLight decay: pooled DA-Up ACR median {dlight_natural_tau_median:.4f} s '
-            f'(n={dlight_natural_tau_n} fits), which reproduces 1.42 s after rounding.'
-        ),
-        (
-            f'- Natural dLight recruitment: session mean {100 * dlight_fraction.mean():.2f}% '
-            f'and SEM {100 * dlight_fraction.sem():.2f}% across {len(dlight_fraction)} sessions, '
-            'which reproduces 21.4 +/- 1.9%.'
-        ),
-        (
-            f'- Optogenetic dLight decay: session median {dlight_opto_tau_median:.4f} s '
-            f'(n={dlight_opto_tau_n}), reproducing 1.37 s.'
-        ),
-        (
-            f'- Optogenetic dLight recruitment: the current untreated t-test implementation gives '
-            f'{100 * dlight_opto_release_median:.2f}% median releasing ACRs, not 87.5%. The '
-            'historical Wilcoxon histogram script also mixed untreated and nepicastat sessions and '
-            'discarded zero-release sessions; 87.5% could not be reproduced from the present outputs.'
-        ),
-        '',
-        '## Metrics that the data do not support',
-        '',
-        '- Natural nLight spatial tau is unavailable because the saved analysis products contain only '
-        'dilation k=0. Reconstructing k=1 through 10 would require raw movie re-extraction, not a fit to '
-        'the existing ACR time series.',
-        '- Spatial fits are retained in native image pixels in the supporting tables and diagnostic '
-        'figure. No physical-distance result is reported because the image calibration remains unresolved.',
-        '- Axonal calcium lag is unavailable because these nLight sessions contain sensor, red structural '
-        'and neuropil/regressor channels, but no simultaneous axonal GCaMP channel. The red regressor was '
-        'not relabelled as calcium.',
-        '- No explicitly labelled nLight nepicastat session was found. The repository contains a separate '
-        'dLight nepicastat cohort, which is not an nLight drug comparison.',
-        '',
-        '## Additional context and sensitivity',
-        '',
-        (
-            f'The broader repository nLight optogenetic table, which includes sessions outside Jingyu\'s '
-            f'{len(selected_sessions)}-session cohort, contains {broad_time_n} temporal fits with median '
-            f'{broad_time_median:.3f} s. This is useful context, but those sessions were not substituted '
-            'for the prespecified cohort.'
-        ),
-        '',
-        'The threshold-sensitivity table and figure show the joint effect of shuffle percentiles 90, 95 '
-        'and 99 with effect-size cut-offs 0, 0.05 and 0.1. The first-lick analysis is secondary and uses '
-        'within-session Spearman correlations on trials with a first lick later than 0.5 s. Raw dF/F or '
-        'response-index amplitudes are not molar calibrations, so their cross-sensor comparison should be '
-        'read as an empirical signal comparison rather than a concentration ratio.',
-        '',
-        '## Files',
-        '',
-        '- `per_session_metrics.csv`: one row per sensor, event and session.',
-        '- `per_roi_fits.csv`: natural-run temporal and native-pixel dLight spatial ACR fits with QC flags.',
-        '- `comparisons.csv`: U tests, effect sizes and BH q values.',
-        '- `inclusion_exclusion.csv`: explicit metric-wise inclusion and reasons.',
-        '- `threshold_sensitivity.csv`: recruitment sensitivity grid.',
-        '- `methods.md`: paths and parameters.',
-        '- `figures/`: PNG and editable SVG sources.',
-        '',
-    ])
-    return '\n'.join(lines)
-
-
-def methods_text(session_metrics, selected_sessions):
-    nlight = session_metrics[session_metrics['sensor'] == 'nLight']
-    dlight = session_metrics[session_metrics['sensor'] == 'dLight']
-    return f'''# Methods and provenance
-
-## Cohorts and inputs
-
-The prespecified nLight cohort contains {len(selected_sessions)} sessions from {nlight['animal'].nunique()} mice: {', '.join(selected_sessions)}. Natural-run inputs came from `{NLIGHT_ROOT}` and the matched behavioural pickles under `{NATURAL_NLIGHT_BEHAVIOUR_ROOT}`. For each nLight session, the analysis rebuilt the combined table in memory from the current green and red response tables, baseline arrays and axon masks, then reapplied the current pooling and classification rules. It did not consume the saved combined tables because 16 A193 component tables dated 20 August 2026 were newer than their combined tables dated 10 August 2026. The earlier `nlight_vs_dlight_complete` output is therefore retained only as a stale-input provenance record. The dLight natural comparison contains {dlight.loc[dlight.event.eq('natural_run_onset'), 'session'].nunique()} sessions from {dlight.loc[dlight.event.eq('natural_run_onset'), 'animal'].nunique()} mice, selected by the stored lick, speed, valid-trial, trial-length and motion-correlation rules in Jingyu's `Dbh_dlight` recording list. Its pooled table was verified against all 57 constituent combined tables, with 11,502 rows and no mismatches. Optogenetic metrics came from `{OPTO_TABLE_ROOT}` and their processed session arrays under this repository's `data/hpc_dlight/lc_opto` and `data/hpc_nlight/lc_opto` roots.
-
-An ACR is a 16 by 16 pixel bin. Spatial diagnostics retain native image pixels because the physical image calibration remains unresolved; no physical-distance conversion is applied here.
-
-## Natural run onset
-
-Events were rewarded, full-stop, non-stimulation run onsets with a complete -2 to +4 s window outside shutter closure. The green sensor trace was corrected with neuropil coefficient 0.2 and trial-wise regression against the green anatomical regressor and red channel, requiring at least 80 shared finite frames. dF/F used a rolling 20th percentile over 9,000 frames, the trace filter used global mean plus five standard deviations, and smoothing before response quantification used sigma one frame.
-
-Valid ACRs were non-edge, had finite green and red profiles, minimum green baseline above 2 and minimum red baseline above 1. DA-Up required response amplitude from 0 to 1 s minus -1 to 0 s above the ACR-specific 95th percentile of 1,000 circular shifts and effect size above 0.05. Sensitivity used shuffle percentiles {SHUFFLE_SENSITIVITY} crossed with effect-size thresholds {EFFECT_SIZE_SENSITIVITY}.
-
-Temporal fits followed `compute_tau_with_qc`: each DA-Up mean profile was Gaussian-smoothed with sigma {TEMPORAL_SMOOTH_SIGMA} frames, its maximum was located, and `A exp(-t/tau) + C` was fitted from that peak through +4 s with C fixed to the minimum fitted value. Fits required positive tau, R squared above {TEMPORAL_R2_MIN} and a peak strictly between {TEMPORAL_PEAK_RANGE_S[0]} and {TEMPORAL_PEAK_RANGE_S[1]} s. One median across included ACR fits represented each session.
-
-dLight natural spatial fits used non-overlapping grid-free one-pixel dilation rings k=0 through 10. ACRs were selected as DA-Up at k=0, each ACR response-amplitude series was fitted with the same fixed-minimum exponential convention, and positive-tau fits required at least six points and R squared above {SPATIAL_R2_MIN}. nLight natural spatial tau was not calculated because only k=0 was saved.
-
-First-lick correlations used the mean DA-Up ACR response on each retained trial, defined as 0 to 1 s minus -1 to 0 s, and the first lick later than 0.5 s. Spearman's rho required at least eight valid trials per session.
-
-## LC optogenetic stimulation
-
-The Chapter 2 implementations identified releasing ACRs with a one-sample greater-than-zero response test at alpha 0.05 plus mean response index above 0.1. The recruitment sensitivity repeated the dedicated Wilcoxon branch while retaining zero-release sessions. Temporal session-mask fits required R squared above 0.7. Spatial fits used 0 to 1 s response-index rings from zero through 20 pixels, subtracted the minimum response across distance, fitted a bounded exponential with tau 0.5 to 50 pixels, and excluded sessions with more than 50% expression-mask pixel reduction.
-
-## Inference
-
-The original comparison generator used session as its independent unit. nLight and dLight used different animals, so its available comparisons used a two-sided Mann-Whitney U test rather than a paired test. Rank-biserial effect size was `2U/(n_nLight*n_dLight)-1`; positive values mean higher nLight. Benjamini-Hochberg q values cover that generator's family of testable metrics. ROI-level fits are retained in the source tables but are not counted as independent animals.
-
-That source-table convention is retained for reproducibility, but it is not the Chapter 3 biological inference rule. For the Chapter 3 analysis, animal is the biological inference unit and session is a repeated observation; Chapter 3 uses animal-median exact tests and animal-then-session bootstrap intervals, with session-level tests shown only as cohort descriptions.
-
-'''
-
-
 #%% run and write
 def validate_results(session_metrics, roi_metrics, comparisons):
     dlight_natural = roi_metrics[
@@ -1251,19 +1040,12 @@ def main(write=False):
         FIGURE_ROOT / 'threshold_sensitivity',
     )
 
-    (OUTPUT_ROOT / 'nlight_vs_dlight_summary.md').write_text(
-        summary_text(session_metrics, roi_metrics, comparisons, sensitivity, selected_sessions),
-        encoding='utf-8',
-    )
-    (OUTPUT_ROOT / 'methods.md').write_text(
-        methods_text(session_metrics, selected_sessions), encoding='utf-8'
-    )
     print(f'Wrote analysis to {OUTPUT_ROOT}')
     print(f'Wrote figures to {FIGURE_ROOT}')
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--write', action='store_true', help='write new tables, reports and figures')
+    parser.add_argument('--write', action='store_true', help='write new tables and figures')
     arguments = parser.parse_args()
     main(write=arguments.write)

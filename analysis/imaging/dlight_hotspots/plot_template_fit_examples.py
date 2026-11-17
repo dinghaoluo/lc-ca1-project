@@ -38,7 +38,6 @@ from plot_single_trial_examples import choose_recordings
 
 repo_root   = Path(__file__).resolve().parents[3]
 FIGURE_ROOT = pp.DLIGHT_HOTSPOTS_FIGURE_ROOT
-LOG_PATH    = repo_root / 'outputs' / 'da_hotspots' / 'PROGRESS.md'
 
 
 #%% training-only templates
@@ -192,17 +191,10 @@ def main():
         path = FIGURE_ROOT / f'template_fit_examples_{row.rec_id}.png'
         if path.exists():
             raise FileExistsError(f'Existing figure left unchanged: {path}')
-    lines = ['', '## 13 November 2026: held-out template-fit example figures', '',
-             'I reused choose_recordings from plot_single_trial_examples.py and its five central consecutive valid trials, then ranked saved Up ACRs by their window amplitude averaged over all kept trials, retaining the first three in stable descending order. The recording loader, valid-trial frames, alignment, NaN rule, five contiguous blocks, training response test (1,000 shuffles, seed 42), normalisation and median template follow estimate_template_fit_gain.py unchanged; only folds containing example trials were recomputed. Saved Up flags select the displayed rows, while training-only Up flags select template contributors.', '',
-             'The first column shows the held-out fold template, with separate labelled curves if the examples span more than one fold; the remaining three rows show the original postprocessed trial trace and its full ordinary-least-squares fit on [template, 1, t], where t=(frame - 60)/30 seconds. Panel titles give A and the window contrast from trial_amplitudes, and each ACR row shares its y-limits across the five trials. No baseline subtraction or red term was added to the fitted trace, no statistics were computed, and no previous output was changed.', '']
-    with LOG_PATH.open('a', encoding='utf-8') as stream:
-        stream.write('\n'.join(lines) + '\n')
-        for label, row in chosen:
-            notes = fit_examples(row.rec_id)
-            for note in notes:
-                stream.write(f'{label}: {note}\n')
-                print(f'{label}: {note}', flush=True)
-            stream.flush()
+    for label, row in chosen:
+        notes = fit_examples(row.rec_id)
+        for note in notes:
+            print(f'{label}: {note}', flush=True)
 
 
 if __name__ == '__main__':

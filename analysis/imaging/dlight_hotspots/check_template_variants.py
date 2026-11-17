@@ -168,151 +168,74 @@ def main():
     pooled = {variant: {label: {'r': [], 'gain': []} for label in ('Up', 'other')}
               for variant in variants}
     pair_values = {variant: [[], []] for variant in variants}
-    rows, folds, contributors = [], [], {}
-    with (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8') as log:
-        log.write('\n## 15 November 2026: template coefficient/dF/F change correlations and templates from other recordings\n\n'
-                  'I imported the loaders, alignment, trial amplitudes, response test, '
-                  'classification, SNR and settings from estimate_template_fit_gain.py, '
-                  'and the Gaussian filter and quantiles from '
-                  'check_smoothed_template_and_co_recruitment.py without changing them. '
-                  'The recording variant repeats its five contiguous blocks, training-only '
-                  '1,000 shuffles with seed 42, individual baseline subtraction and L2 '
-                  'normalisation, framewise median and sigma-3 nearest-mode smoothing. '
-                  'All fits use 180 frames and [template, 1, (frame-60)/30]; no red term '
-                  'or additional centring is used.\n\n'
-                  'Per-ACR Pearson r uses all finite held-out template coefficient/dF/F change pairs, including ACRs '
-                  'with SNR_d <= 0; only fewer than two pairs or a constant template coefficient or dF/F change '
-                  'makes it undefined. Pooled median/IQR gives each included ACR '
-                  'equal weight. The additional pooled pair correlation concatenates '
-                  'all finite ACR-trial pairs without within-ACR centring or '
-                  'standardisation, so between-ACR differences can contribute. '
-                  'No significance tests were requested or run.\n\n')
-        log.flush()
-        for recname in recordings:
-            behaviour, profile, traces = load_recording(recname)
-            frames = event_frames(behaviour)
-            aligned, keep = keep_aligned_trials(align_trials(traces, frames))
-            contrast, _, _ = trial_amplitudes(aligned)
-            template_coef, held_contrast, notes = blocked_coefficients(
-                recname, profile, traces, frames, aligned, keep, contrast)
-            folds.extend(notes)
-            result = summarise(recname, profile, template_coef, held_contrast,
-                               'blocked_smoothed', pooled, pair_values)
-            rows.extend(result)
-            saved_up = profile['Up'].to_numpy(dtype=bool)
-            up_profiles = np.nanmean(aligned[saved_up], axis=1)
-            normalised = normalised_profiles(up_profiles)
-            contributors[recname] = dict(profiles=normalised, n_saved=int(saved_up.sum()))
-            print(f'{recname}: blocked median r Up={result[0]["median_r"]:.6g}, '
-                  f'other={result[1]["median_r"]:.6g}; '
-                  f'{len(normalised)} usable saved Up profiles', flush=True)
-            for note in notes:
-                if note['reason']:
-                    log.write(f'{recname}, fold {note["fold"]}: {note["reason"]}; skipped.\n')
-                    log.flush()
-        log.write('\nAnimal templates use saved Up ACRs from the same animal\'s other '
-                  'recordings, with all valid kept trials averaged separately for each '
-                  'ACR before baseline subtraction and L2 normalisation. Contributor '
-                  'ACRs receive equal weight before the median and sigma-3 nearest-mode '
-                  'smoothing, without renormalising the median. The whole target '
-                  'recording is excluded, including its saved Up flags, and all its '
-                  'kept trials are fitted once. There is therefore a different '
-                  'leave-one-recording-out template for each target recording. '
-                  'Non-finite or zero-norm source profiles are excluded and counted. '
-                  'Gain retains the original sample SD and SNR_d > 0 rule; correlation '
-                  'does not use the gain exclusion.\n\n')
-        for recname in recordings:
-            animal = recname.split('-')[0]
-            sources = [other for other in recordings
-                       if other != recname and other.split('-')[0] == animal]
-            source_profiles = np.concatenate([contributors[other]['profiles'] for other in sources], axis=0)
-            counts = dict(n_template_recordings=len(sources),
-                          n_template_acr=len(source_profiles),
-                          n_template_saved_up=sum(contributors[other]['n_saved'] for other in sources))
-            counts['n_template_excluded'] = counts['n_template_saved_up'] - counts['n_template_acr']
-            design = design_matrix(source_profiles)
-            behaviour, profile, traces = load_recording(recname)
-            frames = event_frames(behaviour)
-            aligned, keep = keep_aligned_trials(align_trials(traces, frames))
-            contrast, _, _ = trial_amplitudes(aligned)
-            template_coef = np.full(keep.shape, np.nan)
-            held_contrast = np.full(keep.shape, np.nan)
-            if design is None:
-                log.write(f'{recname}: no usable non-collinear animal template; all fits skipped.\n')
-            else:
-                template_coef[keep] = np.linalg.lstsq(design, aligned[keep].T, rcond=None)[0][0]
-                held_contrast[keep] = contrast[keep]
-            rows.extend(summarise(recname, profile, template_coef, held_contrast,
-                                  'other_recordings_same_animal', pooled, pair_values, counts))
-            log.write(f'{recname}: animal {animal}, {len(sources)} source recordings, '
-                      f'{counts["n_template_acr"]} contributing ACRs / '
-                      f'{counts["n_template_saved_up"]} saved Up ACRs; '
-                      f'{counts["n_template_excluded"]} unusable profiles.\n')
-            log.flush()
-            print(f'{recname}: animal template from {counts["n_template_acr"]} ACRs, '
-                  f'gain Up={rows[-2]["median_gain"]:.6g}, other={rows[-1]["median_gain"]:.6g}', flush=True)
-        recording_table = pd.DataFrame(rows)
-        for variant in variants:
-            for label in ('Up', 'other'):
-                subset = recording_table.loc[(recording_table.variant == variant)
-                                              & (recording_table.group == label)]
-                low, median, high = quantiles(pooled[variant][label]['r'])
-                glow, gmedian, ghigh = quantiles(pooled[variant][label]['gain'])
-                row = dict(scope='pooled_acrs', rec_id='all', animal='all',
-                           variant=variant, group=label,
-                           n_recordings=int(subset.loc[subset.n_r > 0, 'rec_id'].nunique()),
-                           n_animals=int(subset.loc[subset.n_r > 0, 'animal'].nunique()),
-                           median_r=median, r_q25=low, r_q75=high,
-                           median_gain=gmedian, gain_q25=glow, gain_q75=ghigh,
-                           pooled_pair_r=np.nan)
-                for column in ('n_valid_acr', 'n_r', 'n_pairs', 'n_fewer_two_pairs',
-                               'n_constant_a', 'n_constant_d', 'n_excluded_r'):
-                    row[column] = int(subset[column].sum())
-                for column in ('n_gain', 'n_excluded_snr_d_nonpositive', 'n_excluded_gain'):
-                    row[column] = int(subset[column].sum()) if variant != 'blocked_smoothed' else np.nan
-                rows.append(row)
-                log.write(f'Pooled {variant}, {label}: median template coefficient/dF/F change r={median:.9g}, '
-                          f'IQR [{low:.9g}, {high:.9g}], n={row["n_r"]} ACRs, '
-                          f'n={row["n_recordings"]} recordings, n={row["n_animals"]} animals; '
-                          f'undefined r={row["n_excluded_r"]}.')
-                if variant != 'blocked_smoothed':
-                    log.write(f' Gain median={gmedian:.9g}, IQR [{glow:.9g}, {ghigh:.9g}], '
-                              f'n={row["n_gain"]} ACRs, '
-                              f'n={subset.loc[subset.n_gain > 0, "rec_id"].nunique()} recordings, '
-                              f'n={subset.loc[subset.n_gain > 0, "animal"].nunique()} animals; '
-                              f'excluded non-positive SNR_d={row["n_excluded_snr_d_nonpositive"]}, '
-                              f'total gain exclusions={row["n_excluded_gain"]}.')
-                log.write('\n')
-            template_coef, dff_change = [np.concatenate(parts) for parts in pair_values[variant]]
-            r = float(pearsonr(template_coef, dff_change)[0])
-            rows.append(dict(scope='pooled_pairs', rec_id='all', animal='all',
-                             variant=variant, group='all', n_recordings=len(recordings),
-                             n_animals=len({recname.split('-')[0] for recname in recordings}),
-                             n_pairs=len(template_coef), pooled_pair_r=r))
-            log.write(f'Pooled all ACR-trial pairs, {variant}: Pearson r={r:.9g}, '
-                      f'n={len(template_coef)} pairs, n={len(recordings)} recordings, '
-                      f'n={rows[-1]["n_animals"]} animals.\n')
-        pd.DataFrame(rows).to_csv(output, index=False)
-        log.write('\nPer-recording summaries:\n\n'
-                  '| recording | variant | group | ACRs with r | median r | r IQR | gain ACRs | median gain | gain IQR |\n'
-                  '| --- | --- | --- | ---: | ---: | --- | ---: | ---: | --- |\n')
-        for row in recording_table.itertuples():
-            log.write(f'| {row.rec_id} | {row.variant} | {row.group} | {row.n_r} | '
-                      f'{row.median_r:.9g} | [{row.r_q25:.9g}, {row.r_q75:.9g}] | '
-                      f'{row.n_gain} | {row.median_gain:.9g} | '
-                      f'[{row.gain_q25:.9g}, {row.gain_q75:.9g}] |\n')
-        log.write('\nBlocked training fold counts:\n\n'
-                  '| recording | fold | training trials | held-out trials | training Up | template ACRs | fitted pairs | exclusion |\n'
-                  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n')
-        for row in folds:
-            log.write(f'| {row["rec_id"]} | {row["fold"]} | {row["n_train"]} | '
-                      f'{row["n_test"]} | {row["n_up"]} | {row["n_template"]} | '
-                      f'{row["n_pairs"]} | {row["reason"] or "none"} |\n')
-        log.write('\nTable: outputs/da_hotspots/template_variants.csv. Correlations and '
-                  'gain are descriptive; IQRs describe ACR dispersion, while the pooled '
-                  'pair correlation also contains between-ACR differences. No figures '
-                  'or other analyses were produced, and existing scripts and earlier '
-                  'outputs were left unchanged.\n')
+    rows, contributors = [], {}
+    for recname in recordings:
+        behaviour, profile, traces = load_recording(recname)
+        frames = event_frames(behaviour)
+        aligned, keep = keep_aligned_trials(align_trials(traces, frames))
+        contrast, _, _ = trial_amplitudes(aligned)
+        template_coef, held_contrast, notes = blocked_coefficients(
+            recname, profile, traces, frames, aligned, keep, contrast)
+        result = summarise(recname, profile, template_coef, held_contrast,
+                           'blocked_smoothed', pooled, pair_values)
+        rows.extend(result)
+        saved_up = profile['Up'].to_numpy(dtype=bool)
+        up_profiles = np.nanmean(aligned[saved_up], axis=1)
+        normalised = normalised_profiles(up_profiles)
+        contributors[recname] = dict(profiles=normalised, n_saved=int(saved_up.sum()))
+        print(f'{recname}: blocked median r Up={result[0]["median_r"]:.6g}, '
+              f'other={result[1]["median_r"]:.6g}; '
+              f'{len(normalised)} usable saved Up profiles', flush=True)
+    for recname in recordings:
+        animal = recname.split('-')[0]
+        sources = [other for other in recordings
+                   if other != recname and other.split('-')[0] == animal]
+        source_profiles = np.concatenate([contributors[other]['profiles'] for other in sources], axis=0)
+        counts = dict(n_template_recordings=len(sources),
+                      n_template_acr=len(source_profiles),
+                      n_template_saved_up=sum(contributors[other]['n_saved'] for other in sources))
+        counts['n_template_excluded'] = counts['n_template_saved_up'] - counts['n_template_acr']
+        design = design_matrix(source_profiles)
+        behaviour, profile, traces = load_recording(recname)
+        frames = event_frames(behaviour)
+        aligned, keep = keep_aligned_trials(align_trials(traces, frames))
+        contrast, _, _ = trial_amplitudes(aligned)
+        template_coef = np.full(keep.shape, np.nan)
+        held_contrast = np.full(keep.shape, np.nan)
+        if design is not None:
+            template_coef[keep] = np.linalg.lstsq(design, aligned[keep].T, rcond=None)[0][0]
+            held_contrast[keep] = contrast[keep]
+        rows.extend(summarise(recname, profile, template_coef, held_contrast,
+                              'other_recordings_same_animal', pooled, pair_values, counts))
+        print(f'{recname}: animal template from {counts["n_template_acr"]} ACRs, '
+              f'gain Up={rows[-2]["median_gain"]:.6g}, other={rows[-1]["median_gain"]:.6g}', flush=True)
+    recording_table = pd.DataFrame(rows)
+    for variant in variants:
+        for label in ('Up', 'other'):
+            subset = recording_table.loc[(recording_table.variant == variant)
+                                          & (recording_table.group == label)]
+            low, median, high = quantiles(pooled[variant][label]['r'])
+            glow, gmedian, ghigh = quantiles(pooled[variant][label]['gain'])
+            row = dict(scope='pooled_acrs', rec_id='all', animal='all',
+                       variant=variant, group=label,
+                       n_recordings=int(subset.loc[subset.n_r > 0, 'rec_id'].nunique()),
+                       n_animals=int(subset.loc[subset.n_r > 0, 'animal'].nunique()),
+                       median_r=median, r_q25=low, r_q75=high,
+                       median_gain=gmedian, gain_q25=glow, gain_q75=ghigh,
+                       pooled_pair_r=np.nan)
+            for column in ('n_valid_acr', 'n_r', 'n_pairs', 'n_fewer_two_pairs',
+                           'n_constant_a', 'n_constant_d', 'n_excluded_r'):
+                row[column] = int(subset[column].sum())
+            for column in ('n_gain', 'n_excluded_snr_d_nonpositive', 'n_excluded_gain'):
+                row[column] = int(subset[column].sum()) if variant != 'blocked_smoothed' else np.nan
+            rows.append(row)
+        template_coef, dff_change = [np.concatenate(parts) for parts in pair_values[variant]]
+        r = float(pearsonr(template_coef, dff_change)[0])
+        rows.append(dict(scope='pooled_pairs', rec_id='all', animal='all',
+                         variant=variant, group='all', n_recordings=len(recordings),
+                         n_animals=len({recname.split('-')[0] for recname in recordings}),
+                         n_pairs=len(template_coef), pooled_pair_r=r))
+    pd.DataFrame(rows).to_csv(output, index=False)
     print(pd.DataFrame(rows).loc[lambda table: table.scope != 'recording',
           ['scope', 'variant', 'group', 'median_r', 'r_q25', 'r_q75',
            'median_gain', 'gain_q25', 'gain_q75', 'pooled_pair_r', 'n_pairs']].to_string(index=False), flush=True)

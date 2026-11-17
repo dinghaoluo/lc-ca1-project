@@ -35,7 +35,6 @@ from grid_response_test import align_trials, keep_aligned_trials, trial_amplitud
 
 repo_root   = Path(__file__).resolve().parents[3]
 FIGURE_ROOT = pp.DLIGHT_HOTSPOTS_FIGURE_ROOT
-LOG_PATH    = repo_root / 'outputs' / 'da_hotspots' / 'PROGRESS.md'
 
 
 #%% selection
@@ -157,17 +156,9 @@ def plot_recording(recname):
 def main():
     eligible, median, chosen = choose_recordings()
     print(f'Eligible recordings: {len(eligible)}; median saved Up={median:.9g}%', flush=True)
-    lines = ['', '## 12 November 2026: single-trial dLight example figures', '',
-             f'I selected the highest, closest-to-median and lowest saved Up percentages among {len(eligible)} recordings with at least 50 saved valid ACRs, using the same valid-grid mask and recording list as analyse_acr_consistency_aligned.py. The eligible-recording median Up percentage is {median:.9g}%; ties use the original recording-list order. No statistical tests were run.', '',
-             'The five examples are consecutive entries in the valid-trial list, beginning at zero-based position (n_valid_trials - 5) // 2; for an even-length list this chooses the earlier of the two equally central blocks. Figure titles and the trial numbers below use one-based original behaviour trial numbers, while valid-list positions are also logged to make the selection explicit.', '',
-             'The imported recording loader uses grid_response_test.postprocess_dff on the full grid and then selects the saved valid ACRs. Alignment and complete-window rejection call align_trials and keep_aligned_trials over [-2, 4) s at 30 Hz, with frame 60 at run onset; trial_amplitudes supplies response [0, 1) s minus baseline [-1, 0) s. Each heatmap trial has its own [-1, 0) s baseline removed before averaging across kept trials. Heatmap rows descend by the amplitude averaged across all kept trials, with the same order in all six panels. Grey denotes invalid grids or missing kept windows; black outlines and row markers identify saved Up ACRs.', '',
-             'Each recording has one map colour scale set to the 99th percentile of absolute values across its six maps; the heatmap scale, for which no percentile was specified, uses the same rule across its six heatmaps. Both scales are symmetric, and the colour limits are logged below.']
     for label, row in chosen:
         result = plot_recording(row.rec_id)
-        lines.append(f'{label}: {result}')
         print(f'{label}: {result}', flush=True)
-    with LOG_PATH.open('a', encoding='utf-8') as stream:
-        stream.write(chr(10).join(lines) + chr(10))
 
 
 if __name__ == '__main__':

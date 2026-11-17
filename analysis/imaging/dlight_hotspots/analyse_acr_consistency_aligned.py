@@ -29,7 +29,6 @@ from common_functions import mpl_formatting
 mpl_formatting()
 import numpy as np
 import pandas as pd
-from scipy.stats import wilcoxon
 
 repo_root = Path(__file__).resolve().parents[3]
 JINGYU_ROOT = pp.JINGYU_CODE_ROOT
@@ -157,30 +156,6 @@ def group_trial_fraction(real_response, keep, group):
     return np.asarray(fractions, dtype=float)
 
 
-def safe_wilcoxon_pair(first, second):
-    first = np.asarray(first, dtype=float)
-    second = np.asarray(second, dtype=float)
-    valid = np.isfinite(first) & np.isfinite(second)
-    first, second = first[valid], second[valid]
-    if not len(first):
-        return np.nan, np.nan, 0
-    if np.allclose(first - second, 0):
-        return 0.0, 1.0, len(first)
-    result = wilcoxon(first, second, alternative='two-sided')
-    return float(result.statistic), float(result.pvalue), len(first)
-
-
-def safe_wilcoxon_constant(values, constant):
-    values = np.asarray(values, dtype=float)
-    values = values[np.isfinite(values)]
-    if not len(values):
-        return np.nan, np.nan, 0
-    if np.allclose(values - constant, 0):
-        return 0.0, 1.0, len(values)
-    result = wilcoxon(values - constant, alternative='two-sided')
-    return float(result.statistic), float(result.pvalue), len(values)
-
-
 #%% figures
 def ecdf(values, grid):
     values = np.sort(np.asarray(values, dtype=float))
@@ -232,42 +207,6 @@ def make_overlap_figure(per_recording):
 
 
 #%% log
-def write_log(per_recording, per_acr, all_observed, all_null, zero_n):
-    lines = ['', '## 11 November 2026: corrected aligned single-trial response consistency', '', 'The validated CPU circular-shuffle test was applied to all valid trials behind Jingyu\'s saved classification, with her per-ACR NaN rule. Thresholds are the 90th, 95th and 99th percentiles of the pooled shuffled single-trial amplitudes for each ACR; real and shuffled responses also required single-trial effect size above 0.05.', '', f'Recordings: {per_recording.rec_id.nunique()} recordings, {per_recording.animal.nunique()} animals. Tables: `outputs/da_hotspots/aligned_acr_consistency_per_acr.parquet` and `outputs/da_hotspots/aligned_acr_consistency_per_recording.parquet`.']
-    if zero_n:
-        lines.append(f'ACRs with no kept trials were excluded from probability summaries: {zero_n} ACRs.')
-    else:
-        lines.append('Every valid ACR had at least one kept trial.')
-    lines.append('')
-    lines.append('single-trial responses, single-trial responding fractions:')
-    lines.append('Fractions use the valid ACRs with a kept window on that trial; trials with no kept ACRs are omitted. Their run-onset frames, denominators and fractions are retained as aligned arrays in the per-recording table.')
-    for percentile in THRESHOLDS:
-        value = np.nanmedian(per_recording[f'single_trial_fraction_median_{percentile}'])
-        pooled = np.concatenate(per_recording[f'single_trial_fractions_{percentile}'].to_numpy())
-        lines.append(f'- {percentile}th threshold: pooled median across {len(pooled)} trial rows = {100 * np.nanmedian(pooled):.2f}%; median of per-recording trial medians = {100 * value:.2f}%; compare with the earlier 6 to 8% definition and the approximately 21% trial-averaged classification.')
-    lines.append('')
-    lines.append('response probability, response probability against the shuffle null:')
-    lines.append(f'- The pooled 95th-threshold distribution contains {len(all_observed)} ACRs with kept trials; the null band uses the {N_SHUFFLE} aligned shuffle columns.')
-    lines.append('')
-    lines.append('response counts, empirical per-ACR shuffle p < 0.05 tested against 5%:')
-    for percentile in THRESHOLDS:
-        stat, p_value, n = safe_wilcoxon_constant(per_recording[f'excess_pct_{percentile}'], 5.0)
-        lines.append(f'- {percentile}th threshold: median percentage={np.nanmedian(per_recording[f"excess_pct_{percentile}"]):.2f}%; W={stat:g}, p={p_value:.6g}, n={n} recordings, n={per_recording.animal.nunique()} animals.')
-    lines.append('')
-    lines.append('Up comparison, saved Up ACRs versus remaining valid ACRs, descriptive paired comparisons:')
-    for percentile in THRESHOLDS:
-        stat, p_value, n = safe_wilcoxon_pair(per_recording[f'up_response_probability_median_{percentile}'], per_recording[f'other_response_probability_median_{percentile}'])
-        lines.append(f'- {percentile}th threshold, median response probability: W={stat:g}, p={p_value:.6g}, n={n} recordings, n={per_recording.animal.nunique()} animals.')
-        stat, p_value, n = safe_wilcoxon_pair(per_recording[f'up_single_trial_fraction_mean_{percentile}'], per_recording[f'other_single_trial_fraction_mean_{percentile}'])
-        lines.append(f'- {percentile}th threshold, mean single-trial responding fraction: W={stat:g}, p={p_value:.6g}, n={n} recordings, n={per_recording.animal.nunique()} animals.')
-    lines.append('')
-    lines.append('overlap, Jaccard overlap of responding ACR sets across trials:')
-    lines.append('Each pair uses only ACRs kept on both trials, and non-empty unions are selected separately for the observed matrix and each shuffle; float64 accumulation avoids integer overflow.')
-    for percentile in THRESHOLDS:
-        stat, p_value, n = safe_wilcoxon_pair(per_recording[f'overlap_observed_{percentile}'], per_recording[f'overlap_null_median_{percentile}'])
-        lines.append(f'- {percentile}th threshold: observed median={np.nanmedian(per_recording[f"overlap_observed_{percentile}"]):.4f}, null median={np.nanmedian(per_recording[f"overlap_null_median_{percentile}"]):.4f}; W={stat:g}, p={p_value:.6g}, n={n} recordings, n={per_recording.animal.nunique()} animals.')
-    lines.extend(['', 'Figures: `figures/dlight_hotspots/single_trial_response_probability_95.png` and `figures/dlight_hotspots/single_trial_overlap_95.png`.', '', 'The saved behaviour profiles lack `reward_times_aligned`; no reconstruction was used because the validation trial set is defined by reward, stop flags and run-onset validity.'])
-    (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8').write('\n'.join(lines) + '\n')
 
 
 #%% run
@@ -278,14 +217,12 @@ def main():
     per_recording_rows = []
     all_observed = []
     all_null = []
-    zero_n = 0
     for recname in list(recnames):
         behaviour, profile, traces = load_recording(recname)
         frames = event_frames(behaviour)
         result = quantify_grid_response(traces, frames, n_shuffle=N_SHUFFLE, seed=CHANCE_SEED, return_single_trial=True)
         keep = result['keep']
         n_trials = keep.sum(axis=1).astype(int)
-        zero_n += int(np.sum(n_trials == 0))
         up = profile['Up'].to_numpy(dtype=bool)
         rec_acr = {'rec_id': recname, 'animal': recname.split('-')[0], 'roi_y': profile['roi_id'].map(lambda x: int(x[0])).to_numpy(), 'roi_x': profile['roi_id'].map(lambda x: int(x[1])).to_numpy(), 'Up': up, 'n': n_trials}
         rec_summary = {'rec_id': recname, 'animal': recname.split('-')[0], 'n_trials': len(frames), 'n_valid_acr': len(profile), 'n_zero_trial_acr': int(np.sum(n_trials == 0))}
@@ -340,7 +277,6 @@ def main():
     all_null = np.concatenate(all_null, axis=0)
     make_probability_figure(all_observed, all_null)
     make_overlap_figure(per_recording)
-    write_log(per_recording, per_acr, all_observed, all_null, zero_n)
 
 
 if __name__ == '__main__':

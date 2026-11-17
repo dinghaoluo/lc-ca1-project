@@ -30,7 +30,6 @@ repo_root = Path(__file__).resolve().parents[3]
 EVIDENCE_ROOT = repo_root / 'data' / 'catecholamine_comparison' / 'evidence'
 SESSION_INPUT = EVIDENCE_ROOT / 'response_concentration_matching_sessions.csv'
 DECISION_OUTPUT = EVIDENCE_ROOT / 'response_concentration_matching_decision.csv'
-METHOD_OUTPUT = EVIDENCE_ROOT / 'response_concentration_matching_decision_methods.md'
 
 N_BOOTSTRAPS = 5000
 BOOTSTRAP_SEED = 20260844
@@ -191,44 +190,6 @@ def main():
     decisions = pd.DataFrame(rows)
     decisions.to_csv(DECISION_OUTPUT, index=False)
 
-    methods = f'''# Response-concentration matching sensitivity analysis
-
-This table consolidates the completed 10-trial, 10-ROI analysis rather than
-selecting one reliability rule after seeing its cross-sensor *p* value. Every
-session estimate is the median of 1,000 subsamples produced by
-`analyse_response_concentration_matching.py`; the source table contains 32 nLight sessions
-from four animals and 40 dLight sessions from five animals.
-
-Four sensitivity sets are reported. The first retains every dimension-matched session. The
-second restricts the original full-session split-half metric to the complete
-range shared by both cohorts (`{source_full_low:.6f}` to
-`{source_full_high:.6f}`). The third uses the more conservative intersection
-of the sensors' 5th-to-95th-percentile source ranges
-(`{source_central_low:.6f}` to `{source_central_high:.6f}`). The fourth applies
-that 5th-to-95th-percentile rule to split-half excess recomputed from the
-matched subsamples (`{matched_central_low:.6f}` to
-`{matched_central_high:.6f}`).
-
-The reliability definitions select materially different data. The
-matched-reliability restriction retains only four nLight sessions from three
-animals, whereas the source-reliability restrictions retain broader cohorts.
-It must therefore remain a selected-tail sensitivity, even if its session
-contrast is smaller than .05. The animal-level exact test and animal-balanced
-animal-then-session bootstrap are the relevant safeguards against treating
-repeated sessions as independent replication.
-
-Across the unselected dimension-matched cohort, the nLight-minus-dLight
-concentration difference is absent. The source-reliability branches do not
-yield decisive session or animal evidence, and matched reliability remains
-lower for nLight after the full-range source restriction. The defensible
-conclusion is therefore that both sensor-reported maps retain concentrated
-responses after dimension matching; a sensor-specific difference in response
-concentration is not established.
-
-Bootstrap resamples per row: {N_BOOTSTRAPS}; seeds: {BOOTSTRAP_SEED} through
-{BOOTSTRAP_SEED + len(subsets) - 1}.
-'''
-    METHOD_OUTPUT.write_text(methods, encoding='utf-8')
     print(decisions.to_string(index=False))
 
 

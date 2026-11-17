@@ -109,7 +109,6 @@ def main():
     recording_rows = []
     acr_rows = []
     hard_failures = []
-    shuffle_diffs = []
     explicit_shift_checked = False
     for recname in recordings:
         traces, behaviour, profile, coords = load_inputs(recname)
@@ -140,7 +139,6 @@ def main():
                 'effect_size_max_relative_difference': max_relative_difference(saved_effect, result['effect_size']),
             })
         threshold_relative = np.abs(threshold_cpu - saved_threshold) / np.maximum(np.abs(saved_threshold), 1e-12)
-        shuffle_diffs.extend(threshold_relative[np.isfinite(threshold_relative)].tolist())
         up_agreement = np.mean(up_cpu == profile['Up'].to_numpy(dtype=bool))
         recording_rows.append({
             'rec_id': recname,
@@ -199,15 +197,7 @@ def main():
     recording_table.to_parquet(OUTPUT_ROOT / 'aligned_validation_per_recording.parquet', index=False)
     acr_table.to_parquet(OUTPUT_ROOT / 'aligned_validation_per_acr.parquet', index=False)
     if hard_failures:
-        lines = ['', '## 11 November 2026: aligned CPU validation recheck stopped', '', 'The CPU counterpart was compared with Jingyu\'s saved `_0621` dataframes on the valid ACRs. The required hard-stop checks failed; the condition and consistency analyses were not run.']
-        for failure in hard_failures:
-            lines.append(f"- `{failure['rec_id']}`: n_keep identical={failure['n_keep_ok']}, amplitude identical={failure['amplitude_ok']} (max relative difference {failure['amplitude_max_relative_difference']:.6g}), effect size identical={failure['effect_size_ok']} (max relative difference {failure['effect_size_max_relative_difference']:.6g}), mean profile identical={failure['mean_profile_ok']}.")
-        lines.append('Validation tables were written; no variants were tried.')
-        (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8').write('\n'.join(lines) + '\n')
         raise SystemExit(2)
-    pooled_agreement = np.mean(acr_table['saved_up'] == acr_table['cpu_up'])
-    lines = ['', '## 11 November 2026: aligned CPU validation recheck', '', 'The CPU response test matched Jingyu\'s saved `_0621` dataframes for n_keep_trial, response amplitude, effect size and mean profile within the specified tolerance for all 57 recordings. The batched single-trial and trial-mean shuffle amplitudes matched explicit circular shifts for five complete shuffle columns on the first recording (rtol=1e-10, atol=1e-12).', '', f"Shuffle-threshold relative differences across valid ACRs: median={np.nanmedian(shuffle_diffs):.6g}, maximum={np.nanmax(shuffle_diffs):.6g}; exact CPU/GPU agreement was not expected.", f"Up agreement: pooled={pooled_agreement:.6f}; per-recording minimum={recording_table['up_agreement'].min():.6f}, median={recording_table['up_agreement'].median():.6f}.", '', 'Validation tables: `outputs/da_hotspots/aligned_validation_per_recording.parquet` and `outputs/da_hotspots/aligned_validation_per_acr.parquet`.', '', 'Validation passed; the condition and consistency analyses may proceed.']
-    (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8').write('\n'.join(lines) + '\n')
 
 
 if __name__ == '__main__':

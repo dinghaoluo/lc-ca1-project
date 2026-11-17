@@ -486,7 +486,7 @@ def paired_test(table, ctrl_column, stim_column):
     }
 
 
-#%% figures and progress
+#%% figures
 def paired_plot(table, ctrl_column, stim_column, ylabel, path):
     fig, ax = plt.subplots(figsize=(3.0, 2.6))
     valid = table[[ctrl_column, stim_column]].dropna()
@@ -533,30 +533,6 @@ def diagnostic_pass(summary):
     result = wilcoxon(stim.to_numpy(), ctrl.to_numpy(), alternative='two-sided')
     pooled = np.nanmedian(np.r_[ctrl.to_numpy(), stim.to_numpy()])
     return bool(abs(pooled) <= 0.01 and result.pvalue >= 0.05), float(result.statistic), float(result.pvalue)
-
-
-def append_progress(summary, stats, red_statistic, red_pvalue):
-    with (OUTPUT_ROOT / 'PROGRESS.md').open('a', encoding='utf-8') as stream:
-        stream.write('\n## 6 November 2026: DA hotspot run-onset LC stimulation comparison\n\n')
-        stream.write(
-            'Processed the 40 pathdLightLCOpto recordings from the completed '
-            'event selection event table. Stimulation used all 1,174 detected PMT-edge '
-            'events, including late events and tied offline trial indices; ctrl '
-            'used method-0 run-onset trials. Jingyu\'s grid-free extractor and '
-            'single-trial regression were used with the repository registration '
-            'and GUI axon masks.\n\n'
-        )
-        stream.write(
-            f'The tdTomato diagnostic used a paired Wilcoxon test across '
-            f'{len(summary)} recordings: W={red_statistic}, p={red_pvalue}.\n\n'
-        )
-        stream.write('Wilcoxon signed-rank tests, stim minus ctrl, recording as the unit:\n\n')
-        for result in stats:
-            stream.write(
-                f'- {result["metric"]}: n={result["n_recordings"]} recordings, '
-                f'n={result["n_animals"]} animals, W={result["statistic"]}, '
-                f'p={result["p_value"]}.\n'
-            )
 
 
 def analyse_recording(recname, row):
@@ -627,7 +603,6 @@ def analyse_recording(recname, row):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='compare run-onset LC stimulation with ctrl trials')
     parser.add_argument('--recording', help='optional recording substring')
-    parser.add_argument('--no-progress', action='store_true')
     args = parser.parse_args(argv)
 
     sessions = final_sessions()
@@ -705,12 +680,6 @@ def main(argv=None):
         FIGURE_ROOT / 'ctrl_stim_example_recording.png',
     )
 
-    metadata = {
-        'n_recordings': len(per_recording),
-        'n_trial_rows': len(per_trial),
-    }
-    if not args.no_progress:
-        append_progress(per_recording, stats, red_statistic, red_pvalue)
     print(per_recording.to_string(index=False))
     print(pd.DataFrame(stats).to_string(index=False))
 

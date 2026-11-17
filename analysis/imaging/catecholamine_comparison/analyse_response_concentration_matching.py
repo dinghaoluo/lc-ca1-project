@@ -416,34 +416,6 @@ def main():
         OUTPUT_ROOT / 'response_concentration_matching_summary.csv', index=False)
     plot_summary(summary, overlap_low, overlap_high)
 
-    methods = f'''# Dimension-matched response-concentration analysis
-
-The analysis recomputes the optogenetic top-10% contribution-minus-shuffle metric
-from the stored trial-by-pixel arrays and ROI masks listed in
-`roi_release_metrics.csv`. Sessions require at least {N_MATCHED_TRIALS} trials
-and {N_MATCHED_ROIS} ROIs, which preserves all animals in both cohorts. Each
-eligible session is subsampled without replacement to exactly
-{N_MATCHED_TRIALS} trials and {N_MATCHED_ROIS} ROIs, with {N_RESAMPLES}
-independent subsamples. Because exactly ten ROIs are retained, the largest
-single ROI is the top 10%. Each subsample uses {N_SHUFFLES} within-session
-ROI-identity shuffles per trial, preserving the recorded trial values, and
-reports top-10% excess and split-half Spearman excess above the median shuffle.
-
-The reliability-overlap analysis retains session medians between
-`{overlap_low:.6f}` and `{overlap_high:.6f}`, the intersection of the sensors'
-5th-to-95th-percentile matched split-half distributions. It therefore tests
-the concentration contrast only where measured reliability overlaps; the
-summary also reports the residual reliability contrast after restriction.
-Session values are the median across subsamples. Animal medians, an exact
-animal-level Mann-Whitney sensitivity test and an animal-then-session
-bootstrap interval accompany the descriptive session-level comparison.
-
-Random seed: `{RNG_SEED}`. The complete resample table is retained so every
-session median can be reconstructed. This remains a sensitivity analysis,
-not a replacement for an animal-balanced experiment.
-'''
-    (OUTPUT_ROOT / 'response_concentration_matching_methods.md').write_text(
-        methods, encoding='utf-8')
 
     print(results.to_string(index=False))
     print(f'eligible sessions: {len(summary)}')
